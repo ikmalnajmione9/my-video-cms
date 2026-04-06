@@ -2,25 +2,108 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0f172a;
+  --muted-foreground: #ffffff;
+  --glass-bg: #ffffff;
+  --glass-border: #ffffff;
+  --nav-bg: #ffffff;
+  --border: #e2e8f0;
+  --card-bg: #ffffff;
+  --input-bg: #f1f5f9;
+  --input-border: #cbd5e1;
+  --button-bg: #e2e8f0;
+  --button-hover: #cbd5e1;
+  --button-text: #0f172a;
+  --secondary-text: #475569;
+  --link-color: #0066cc;
+  --destructive: #dc2626;
+  --accent-blue: #3b82f6;
+  --accent-indigo: #6366f1;
 }
+
+/* Utility classes that map to CSS variables */
+.bg-background { background: var(--background) !important; }
+.text-foreground { color: var(--foreground) !important; }
+.bg-card { background: var(--card-bg) !important; }
+.text-muted { color: var(--muted-foreground) !important; }
+.border-color { border-color: var(--border) !important; }
+
+/* Light theme Tailwind utility overrides */
+.bg-white { background: #ffffff; }
+.bg-slate-50 { background: #ffffff; }
+.bg-slate-100 { background: #ffffff; }
+.bg-slate-200 { background: #ffffff; }
+.text-slate-900 { color: #0f172a; }
+.text-slate-800 { color: #1e293b; }
+.text-slate-700 { color: #334155; }
+.text-slate-600 { color: #475569; }
+.text-slate-500 { color: #64748b; }
+.text-slate-400 { color: #94a3b8; }
+.border-slate-200 { border-color: #e2e8f0; }
+.border-slate-300 { border-color: #cbd5e1; }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-glass: var(--glass-bg);
+  --color-glass-border: var(--glass-border);
 }
 
 body {
-  background: var(--background);
+  background: #ffffff;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+html {
+  background: #ffffff;
+}
+
+/* Navigation and border helpers that respect theme variables */
+.nav-bg { background: var(--nav-bg) !important; }
+.border-var { border-color: var(--border) !important; }
+
+.glass-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.skeleton {
+  background: #e2e8f0;
+  animation: skeleton-loading 1.2s ease-in-out infinite;
+}
+
+@keyframes skeleton-loading {
+  0% { opacity: 0.55; }
+  50% { opacity: 0.85; }
+  100% { opacity: 0.55; }
+}
+
+/* Custom scrollbar for light theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
+}
+
+/* WebKit browsers */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 20px;
+  border: 1px solid transparent;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.8);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
 }

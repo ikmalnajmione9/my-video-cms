@@ -2,17 +2,17 @@ import Link from 'next/link'
 
 export default function Sidebar({ posts, activeId }: any) {
   return (
-    <aside className="w-72 bg-[#161b22] border-r border-[#30363d] flex flex-col">
+    <aside className="w-72 bg-white border-r border-slate-200 flex flex-col font-sans">
       {/* Header */}
-      <div className="px-4 py-3 font-semibold text-sm border-b border-[#30363d]">
-        🧩 Net7 Feature Hub
+      <div className="px-4 py-3 font-semibold text-sm border-b border-slate-200 text-slate-900">
+        🧩 Net7 Product Guide Web
       </div>
 
       {/* Search (UI only for now) */}
       <div className="p-3">
         <input
           placeholder="Search title..."
-          className="w-full bg-[#0d1117] border border-[#30363d] rounded px-3 py-1.5 text-sm"
+          className="w-full bg-slate-50 border border-slate-300 rounded px-3 py-1.5 text-sm text-slate-800"
         />
       </div>
 
@@ -25,17 +25,14 @@ export default function Sidebar({ posts, activeId }: any) {
             className={`block px-4 py-3 text-sm border-l-2
               ${
                 activeId === post.id
-                  ? 'bg-[#1f2937] border-blue-500'
-                  : 'border-transparent hover:bg-[#1f2937]'
+                  ? 'bg-blue-50 border-blue-500'
+                  : 'border-transparent hover:bg-slate-100'
               }
             `}
           >
-            <div className="font-medium">{post.title}</div>
-            <div className="text-xs text-gray-400 flex justify-between mt-1">
-              <span>{post.youtube_video_id}</span>
-              <span className="bg-blue-600/20 text-blue-400 px-1.5 rounded">
-                NEW
-              </span>
+            <div className="font-medium text-slate-800">{post.title}</div>
+            <div className="text-xs text-slate-500 flex justify-between mt-1">
+              <span className="bg-blue-100 text-blue-700 px-1.5 rounded">NEW</span>
             </div>
           </Link>
         ))}

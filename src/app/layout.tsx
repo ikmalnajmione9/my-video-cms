@@ -1,12 +1,23 @@
-export default function RootLayout({
+import "./globals.css"
+import ClientLayoutWrapper from '@/components/ClientLayoutWrapper'
+import ThemeProvider from '@/contexts/ThemeContext'
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   return (
     <html lang="en">
-      <body className="bg-[#0e1117] text-gray-100 h-screen overflow-hidden">
-        {children}
+      <head>
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" />
+      </head>
+      <body className="h-screen overflow-hidden antialiased">
+        <ThemeProvider>
+          <ClientLayoutWrapper>
+            {children}
+          </ClientLayoutWrapper>
+        </ThemeProvider>
       </body>
     </html>
   )

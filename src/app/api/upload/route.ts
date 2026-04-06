@@ -2,9 +2,6 @@ import { NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { Readable } from 'stream'
 import { supabaseServer } from '@/lib/supabase-server'
-import fs from 'fs'
-import path from 'path'
-import os from 'os'
 
 // OAuth client setup
 const oauth2Client = new google.auth.OAuth2(
@@ -21,68 +18,115 @@ const youtube = google.youtube({
   version: 'v3',
   auth: oauth2Client,
 })
+
+function extractYouTubeVideoId(url: string) {
+  if (!url) return null
+
+  const regex = /(?:https?:\/\/)?(?:www\.)?(?:(?:youtube\.com\/watch\?v=)|(?:youtube\.com\/embed\/)|(?:youtu\.be\/))([A-Za-z0-9_-]{11})/i
+  const match = url.match(regex)
+  return match?.[1] ?? null
+}
+
+function extractYouTubeVideoIdFromMarkdown(markdown: string) {
+  if (!markdown) return null
+
+  const urlMatch = markdown.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([A-Za-z0-9_-]{11})/i)
+  return urlMatch?.[1] ?? null
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData()
 
-    const video = formData.get('video')
-    const markdown = formData.get('markdown')
-    const title = formData.get('title') as string
+    const markdown = formData.get('markdown') ?? formData.get('description')
+    const title = (formData.get('title') as string) || ''
+    const tag = ((formData.get('tag') as string) || 'new').trim() || 'new'
+    const author = ((formData.get('author') as string) || 'Ikmal Najmi').trim() || 'Ikmal Najmi'
+    const group_name = (formData.get('group_name') as string) || ''
 
-    if (!(video instanceof File) || !(markdown instanceof File) || !title) {
-      return NextResponse.json(
-        { error: 'Missing video, markdown, or title' },
-        { status: 400 }
-      )
+    let markdownText = ''
+
+    if (markdown instanceof File) {
+      markdownText = await markdown.text()
+    } else if (typeof markdown === 'string') {
+      markdownText = markdown
+    } else if (markdown === null) {
+      markdownText = ''
+    } else {
+      return NextResponse.json({ error: 'Invalid description content' }, { status: 400 })
     }
 
-    // ✅ Upload video to YouTube
-    const videoBuffer = Buffer.from(await video.arrayBuffer())
-    const videoStream = Readable.from(videoBuffer)
+    markdownText = markdownText.trim()
 
-    const youtubeRes = await youtube.videos.insert({
-      part: ['snippet', 'status'],
-      requestBody: {
-        snippet: {
-          title,
-          description: 'Uploaded via Video CMS',
-        },
-        status: {
-          privacyStatus: 'unlisted',
-        },
-      },
-      media: {
-        body: videoStream,
-      },
-    })
-
-    const videoId = youtubeRes.data.id
-    if (!videoId) {
-      throw new Error('YouTube upload failed')
+    if (!title.trim()) {
+      return NextResponse.json({ error: 'Missing title' }, { status: 400 })
     }
 
-    // ✅ Upload markdown to Supabase Storage
-    const markdownPath = `posts/${crypto.randomUUID()}.md`
-    const markdownBuffer = Buffer.from(await markdown.arrayBuffer())
-
-    const { error: storageError } = await supabaseServer.storage
-      .from('markdown-files')
-      .upload(markdownPath, markdownBuffer, {
-        contentType: 'text/markdown',
-      })
-
-    if (storageError) {
-      throw storageError
-    }
-
-    // ✅ Insert DB record
-    const { error: dbError } = await supabaseServer
+    let dbError: any = null
+    
+    // First attempt: try with all columns
+    const insertWithAll = await supabaseServer
       .from('posts')
       .insert({
-        title,
-        content_path: markdownPath,
-        youtube_video_id: videoId,
+        title: title.trim(),
+        content_path: markdownText,
+        tag,
+        author,
+        group_name: group_name || null,
       })
+
+    if (insertWithAll.error) {
+      const isMissingGroupColumn =
+        typeof insertWithAll.error.message === 'string' &&
+        insertWithAll.error.message.toLowerCase().includes('column') &&
+        insertWithAll.error.message.toLowerCase().includes('group_name')
+
+      if (isMissingGroupColumn) {
+        // Fallback: Try without group_name
+        const insertWithOthers = await supabaseServer
+          .from('posts')
+          .insert({
+            title: title.trim(),
+            content_path: markdownText,
+            tag,
+            author,
+          })
+        
+        if (insertWithOthers.error) {
+          const isMissingAuthorOrTag =
+            typeof insertWithOthers.error.message === 'string' &&
+            insertWithOthers.error.message.toLowerCase().includes('column')
+          
+          if (isMissingAuthorOrTag) {
+            // Fallback 1: try without author
+            const insertWithoutAuthor = await supabaseServer
+              .from('posts')
+              .insert({
+                title: title.trim(),
+                content_path: markdownText,
+                tag,
+              })
+            
+            if (insertWithoutAuthor.error && insertWithoutAuthor.error.message.toLowerCase().includes('tag')) {
+              // Fallback 2: try without tag as well
+              const insertBasic = await supabaseServer
+                .from('posts')
+                .insert({
+                  title: title.trim(),
+                  content_path: markdownText,
+                })
+              dbError = insertBasic.error
+            } else {
+              dbError = insertWithoutAuthor.error
+            }
+          } else {
+            dbError = insertWithOthers.error
+          }
+        }
+      } else {
+        dbError = insertWithAll.error
+      }
+    }
 
     if (dbError) {
       throw dbError
@@ -90,14 +134,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      videoId,
-      content_path: markdownPath,
+      content_path: markdownText,
     })
   } catch (error: any) {
     console.error(error)
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
