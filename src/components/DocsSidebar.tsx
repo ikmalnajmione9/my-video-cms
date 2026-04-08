@@ -337,50 +337,75 @@ export default function DocsSidebar({ posts, basePath = '/docs', onClose }: { po
 
   if (basePath === '/user-guide-v2') {
     return (
-      <div className="p-4 font-sans">
-        <div className="mb-4 pb-3 border-b border-slate-200 flex items-center justify-between gap-2">
-          <Link href="/" className="text-[13px] font-bold tracking-tight text-slate-900 hover:text-slate-700 transition-colors">
-            Net7 Product Guide Hub
-          </Link>
+      <div className="flex flex-col h-full font-sans bg-white">
+        {/* Header */}
+        <div className="px-6 py-6 border-b border-slate-200">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
+              N7
+            </div>
+            <div>
+              <div className="font-bold text-sm text-slate-900">Net7 System</div>
+              <div className="text-xs text-slate-500">Product Guide Hub</div>
+            </div>
+          </div>
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex items-center justify-center text-slate-500 transition-colors hover:text-slate-900"
+              className="absolute top-4 right-4 inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
               aria-label="Close sidebar"
             >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M6 6l12 12" />
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M18 6l-12 12" />
+                <path d="M6 6l12 12" />
               </svg>
             </button>
           )}
         </div>
 
-        <div className="space-y-1">
-          <Link
-            href="/user-guide-v2"
-            className={`block rounded px-2 py-2 text-sm transition-colors ${
-              isUserGuideV2Active
-                ? 'bg-blue-50 text-blue-700 font-semibold'
-                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            Product Guide
-          </Link>
-
-          {canManageAccounts && (
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
+          <div className="space-y-1">
             <Link
-              href="/admin/accounts"
-              className={`block rounded px-2 py-2 text-sm transition-colors ${
-                isAccountsActive
-                  ? 'bg-blue-50 text-blue-700 font-semibold'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-              }`}
+              href="/user-guide-v2"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all
+                ${
+                  isUserGuideV2Active
+                    ? 'bg-blue-50 text-blue-700 font-medium'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }
+              `}
             >
-              Manage Accounts
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Product Guide
             </Link>
-          )}
+
+            {canManageAccounts && (
+              <Link
+                href="/admin/accounts"
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all
+                  ${
+                    isAccountsActive
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }
+                `}
+              >
+                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 12H9m6 0a6 6 0 01-6 6H6a6 6 0 010-12h4a6 6 0 016 6z" />
+                </svg>
+                Manage Accounts
+              </Link>
+            )}
+          </div>
+        </nav>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-200 text-xs text-slate-500">
+          <div>v1.0.0 • Net7 System</div>
         </div>
       </div>
     )

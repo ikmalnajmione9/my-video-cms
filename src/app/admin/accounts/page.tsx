@@ -12,6 +12,11 @@ type User = {
   role?: string
 }
 
+const isDisplayableEmail = (value?: string | null) => {
+  if (!value) return false
+  return value.includes('@')
+}
+
 export default function AccountsPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -293,7 +298,9 @@ export default function AccountsPage() {
                 ) : (
                   users.map(user => (
                     <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 text-slate-800 font-medium text-sm">{user.email}</td>
+                      <td className="px-4 py-3 text-slate-800 font-medium text-sm">
+                        {isDisplayableEmail(user.email) ? user.email : 'Removed account'}
+                      </td>
                       <td className="px-4 py-3 text-slate-500 text-xs hidden sm:table-cell">
                         {user.created_at ? new Date(user.created_at).toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                       </td>
@@ -304,9 +311,15 @@ export default function AccountsPage() {
                         <button
                           type="button"
                           onClick={() => handleRemoveClick(user)}
-                          disabled={removingUserId === user.id || user.id === currentUserId}
+                          disabled={removingUserId === user.id || user.id === currentUserId || !isDisplayableEmail(user.email)}
                           className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
-                          title={user.id === currentUserId ? 'You cannot remove your own account.' : `Remove ${user.email}`}
+                          title={
+                            user.id === currentUserId
+                              ? 'You cannot remove your own account.'
+                              : !isDisplayableEmail(user.email)
+                              ? 'This account is already removed.'
+                              : `Remove ${user.email}`
+                          }
                         >
                           {removingUserId === user.id ? 'Removing...' : 'Remove Account'}
                         </button>

@@ -1,38 +1,5 @@
 import { NextResponse } from 'next/server'
-import { google } from 'googleapis'
-import { Readable } from 'stream'
 import { supabaseServer } from '@/lib/supabase-server'
-
-// OAuth client setup
-const oauth2Client = new google.auth.OAuth2(
-  process.env.YT_CLIENT_ID,
-  process.env.YT_CLIENT_SECRET,
-  'http://localhost:3000/api/auth/callback/google'
-)
-
-oauth2Client.setCredentials({
-  refresh_token: process.env.YT_REFRESH_TOKEN,
-})
-
-const youtube = google.youtube({
-  version: 'v3',
-  auth: oauth2Client,
-})
-
-function extractYouTubeVideoId(url: string) {
-  if (!url) return null
-
-  const regex = /(?:https?:\/\/)?(?:www\.)?(?:(?:youtube\.com\/watch\?v=)|(?:youtube\.com\/embed\/)|(?:youtu\.be\/))([A-Za-z0-9_-]{11})/i
-  const match = url.match(regex)
-  return match?.[1] ?? null
-}
-
-function extractYouTubeVideoIdFromMarkdown(markdown: string) {
-  if (!markdown) return null
-
-  const urlMatch = markdown.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?([A-Za-z0-9_-]{11})/i)
-  return urlMatch?.[1] ?? null
-}
 
 export async function POST(req: Request) {
   try {

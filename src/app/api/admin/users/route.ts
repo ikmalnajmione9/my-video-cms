@@ -61,13 +61,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const users = data.users.map(u => ({
+  const users = data.users
+    // Supabase soft-deleted users can remain in listUsers() with token-like
+    // values replacing email. Hide those from account management UI.
+    .filter(u => !!u.email && u.email.includes('@'))
+    .map(u => ({
     id: u.id,
     email: u.email,
     created_at: u.created_at,
     last_sign_in_at: u.last_sign_in_at,
     role: u.role,
-  }))
+    }))
 
   return NextResponse.json({ users })
 }
