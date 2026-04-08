@@ -10,7 +10,7 @@ export default function CreatePostButton() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [session, setSession] = useState<any>(null)
   const router = useRouter()
-  const { refreshPosts, refreshGroups } = useViewer()
+  const { refreshPosts, refreshGroups, groups } = useViewer()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
@@ -26,6 +26,7 @@ export default function CreatePostButton() {
         isOpen={dialogOpen}
         onClose={() => setDialogOpen(false)}
         initialTag="new"
+        groupOptions={groups.map(group => group.name)}
         onSaved={() => {
           setDialogOpen(false)
           // Refresh viewer context data

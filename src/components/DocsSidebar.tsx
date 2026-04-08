@@ -23,7 +23,7 @@ const getTagBadgeClass = (tag?: string) => {
   return 'bg-sky-100 text-sky-700 border border-sky-200'
 }
 
-export default function DocsSidebar({ posts }: { posts: Post[] }) {
+export default function DocsSidebar({ posts, basePath = '/docs', onClose }: { posts: Post[]; basePath?: string; onClose?: () => void }) {
   const UNGROUPED_KEY = '__ungrouped__'
   const GROUP_ORDER_KEY = 'docs-sidebar-group-order'
   const POST_ORDER_KEY = 'docs-sidebar-post-order'
@@ -31,7 +31,7 @@ export default function DocsSidebar({ posts }: { posts: Post[] }) {
   const pathname = usePathname()
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
-  const { isAdmin, posts: adminPosts, groups: adminGroups, refreshPosts, refreshGroups, setUploadDialogOpen, setEditingPost, setCreateGroupDialogOpen, setGroupDialogOpen, setSelectedPostForGroup, setDeleteGroupDialogOpen, setGroupToDelete, setEditGroupDialogOpen, setGroupToEdit, setRemovePostDialogOpen, setPostToRemove } = useAdmin()
+  const { isAdmin, canManageAccounts, posts: adminPosts, groups: adminGroups, refreshPosts, refreshGroups, setUploadDialogOpen, setEditingPost, setCreateGroupDialogOpen, setGroupDialogOpen, setSelectedPostForGroup, setDeleteGroupDialogOpen, setGroupToDelete, setEditGroupDialogOpen, setGroupToEdit, setRemovePostDialogOpen, setPostToRemove } = useAdmin()
   const { posts: viewerPosts, groups: viewerGroups } = useViewer()
   const [groupOrder, setGroupOrder] = useState<string[]>([])
   const [postOrderByGroup, setPostOrderByGroup] = useState<Record<string, string[]>>({})
@@ -43,7 +43,10 @@ export default function DocsSidebar({ posts }: { posts: Post[] }) {
   const [postGroupOverride, setPostGroupOverride] = useState<Record<string, string>>({})
 
   const activeId = pathname?.split('/').pop() || ''
-  const isHomeActive = pathname === '/docs'
+  const isHomeActive = pathname === basePath
+  const isDocsActive = pathname === '/docs' || pathname?.startsWith('/docs/')
+  const isUserGuideV2Active = pathname === '/user-guide-v2' || pathname?.startsWith('/user-guide-v2/')
+  const isAccountsActive = pathname === '/admin/accounts' || pathname?.startsWith('/admin/accounts/')
 
   const sourcePosts = isAdmin ? adminPosts : viewerPosts
   // Keep marker posts out of the UI, even if server-provided data still includes them.
@@ -273,7 +276,7 @@ export default function DocsSidebar({ posts }: { posts: Post[] }) {
           }}
       >
         <Link
-          href={`/docs/${post.id}`}
+          href={`${basePath}/${post.id}`}
           className={`flex min-w-0 items-center justify-between gap-2 text-sm transition-colors py-1 ${
             isActive
               ? 'text-slate-900 font-semibold'
@@ -328,6 +331,57 @@ export default function DocsSidebar({ posts }: { posts: Post[] }) {
             </button>
           </div>
         )}
+      </div>
+    )
+  }
+
+  if (basePath === '/user-guide-v2') {
+    return (
+      <div className="p-4 font-sans">
+        <div className="mb-4 pb-3 border-b border-slate-200 flex items-center justify-between gap-2">
+          <Link href="/" className="text-[13px] font-bold tracking-tight text-slate-900 hover:text-slate-700 transition-colors">
+            Net7 Product Guide Hub
+          </Link>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center justify-center text-slate-500 transition-colors hover:text-slate-900"
+              aria-label="Close sidebar"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M6 6l12 12" />
+                <path d="M18 6l-12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <Link
+            href="/user-guide-v2"
+            className={`block rounded px-2 py-2 text-sm transition-colors ${
+              isUserGuideV2Active
+                ? 'bg-blue-50 text-blue-700 font-semibold'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            Product Guide
+          </Link>
+
+          {canManageAccounts && (
+            <Link
+              href="/admin/accounts"
+              className={`block rounded px-2 py-2 text-sm transition-colors ${
+                isAccountsActive
+                  ? 'bg-blue-50 text-blue-700 font-semibold'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              Manage Accounts
+            </Link>
+          )}
+        </div>
       </div>
     )
   }
@@ -391,7 +445,7 @@ export default function DocsSidebar({ posts }: { posts: Post[] }) {
                 <path d="M12 10v6" />
                 <path d="M9 13h6" />
               </svg>
-              Create New Group
+              Manage Groups
             </button>
           </div>
         </div>
@@ -399,7 +453,7 @@ export default function DocsSidebar({ posts }: { posts: Post[] }) {
 
       <div className="mb-4">
         <Link
-          href="/docs"
+          href={basePath}
           className={`group relative flex min-w-0 items-center rounded py-1 text-left text-xs font-bold tracking-widest transition-colors whitespace-nowrap ${
             isHomeActive
               ? 'text-slate-900 font-semibold'

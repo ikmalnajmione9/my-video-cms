@@ -23,6 +23,7 @@ interface UploadDialogProps {
   initialTag?: string
   initialAuthor?: string
   initialGroupName?: string | null
+  groupOptions?: string[]
   postId?: string | number
   onSaved?: () => void
 }
@@ -110,6 +111,7 @@ export default function UploadDialog({
   initialTag = 'new',
   initialAuthor = '',
   initialGroupName = null,
+  groupOptions = [],
   postId,
   onSaved,
 }: UploadDialogProps) {
@@ -119,6 +121,7 @@ export default function UploadDialog({
   const [descriptionText, setDescriptionText] = useState(initialParsed.description)
   const [tag, setTag] = useState(initialTag || 'new')
   const [author, setAuthor] = useState(initialAuthor)
+  const [selectedGroupName, setSelectedGroupName] = useState(initialGroupName || '')
   const [sessionAuthor, setSessionAuthor] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [message, setMessage] = useState('')
@@ -130,6 +133,10 @@ export default function UploadDialog({
   const [attemptedSubmit, setAttemptedSubmit] = useState(false)
   const [videoToDelete, setVideoToDelete] = useState<string | null>(null)
   const [removedExistingVideo, setRemovedExistingVideo] = useState(false)
+  const normalizedGroupOptions = useMemo(
+    () => Array.from(new Set((groupOptions || []).map(name => name.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [groupOptions]
+  )
 
   // Fetch session author name once on mount
   useEffect(() => {
@@ -157,6 +164,7 @@ export default function UploadDialog({
     setTag(initialTag || 'new')
     // For edits, keep the stored author. For new posts, always use session author.
     setAuthor(postId ? (initialAuthor || sessionAuthor) : sessionAuthor)
+    setSelectedGroupName(initialGroupName || '')
 
     // In edit mode, preload existing video metadata.
     if (postId) {
@@ -168,7 +176,7 @@ export default function UploadDialog({
       setHasPreviewedUploadedVideo(false)
       setRemovedExistingVideo(false)
     }
-  }, [initialTitle, initialMarkdown, initialTag, initialAuthor, postId, sessionAuthor])
+  }, [initialTitle, initialMarkdown, initialTag, initialAuthor, initialGroupName, postId, sessionAuthor])
 
   const resetForm = () => {
     setTitle('')
@@ -181,6 +189,7 @@ export default function UploadDialog({
     setCurrentUploadingFile('')
     setHasPreviewedUploadedVideo(false)
     setAuthor(sessionAuthor)
+    setSelectedGroupName(initialGroupName || '')
     setPreviewVideoId(null)
     setAttemptedSubmit(false)
   }
@@ -193,10 +202,8 @@ export default function UploadDialog({
 
   const isFormValid = useMemo(() => {
       const hasSessionUploadedVideos = uploadedVideos.some((video) => video.source === 'uploaded')
-    return title.trim().length > 0 && 
-           author.trim().length > 0 && 
-        (!hasSessionUploadedVideos || hasPreviewedUploadedVideo);
-  }, [title, author, uploadedVideos, hasPreviewedUploadedVideo]);
+    return title.trim().length > 0 && (!hasSessionUploadedVideos || hasPreviewedUploadedVideo)
+  }, [title, uploadedVideos, hasPreviewedUploadedVideo])
 
   const removeUploadedVideo = (idKey: string | null) => {
     const removedVideo = uploadedVideos.find(v => (v.videoId ?? v.localUrl) === idKey)
@@ -281,7 +288,7 @@ export default function UploadDialog({
     event.preventDefault()
     setAttemptedSubmit(true)
 
-    if (!title.trim() || !author.trim()) {
+    if (!title.trim()) {
       setMessage('Please fill in all required fields.')
       setStatus('error')
       return
@@ -291,7 +298,7 @@ export default function UploadDialog({
 
     const hasSessionUploadedVideos = uploadedVideos.some((video) => video.source === 'uploaded')
     if (hasSessionUploadedVideos && !hasPreviewedUploadedVideo) {
-      setMessage('Please preview at least one selected video before publishing.')
+      setMessage('Please preview the selected video before publishing.')
       setStatus('error')
       return
     }
@@ -354,6 +361,7 @@ export default function UploadDialog({
     }
 
     const storedContent = buildStoredPostContent(descriptionText, selectedVideo)
+    const groupNameValue = selectedGroupName.trim()
 
     try {
       setStatus('loading')
@@ -373,7 +381,7 @@ export default function UploadDialog({
               markdown: storedContent,
               tag: tag.trim() || 'new',
               author: author.trim(),
-              group_name: initialGroupName
+              group_name: groupNameValue || null,
             }),
           })
         const body = await res.json()
@@ -384,7 +392,7 @@ export default function UploadDialog({
         formData.append('markdown', storedContent)
         formData.append('tag', tag.trim() || 'new')
         formData.append('author', author.trim())
-        formData.append('group_name', '')
+        formData.append('group_name', groupNameValue)
 
         const res = await fetch('/api/upload', { method: 'POST', body: formData })
         const body = await res.json()
@@ -430,17 +438,7 @@ export default function UploadDialog({
                 {attemptedSubmit && !title.trim() && <p className="text-xs text-red-400 mt-1.5 font-medium">Title is required.</p>}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-slate-700">Author</label>
-                  <div className="mt-1 w-full rounded border border-slate-300 bg-slate-50 px-3 py-2 text-slate-700 text-sm flex items-center gap-2">
-                    <div className="h-5 w-5 rounded-full bg-blue-600 flex items-center justify-center text-[9px] font-bold text-white uppercase flex-shrink-0">
-                      {author.split(' ').map(n => n[0]).join('').substring(0, 2) || 'U'}
-                    </div>
-                    <span>{author || 'Loading...'}</span>
-                  </div>
-                </div>
-
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm text-slate-700">Status Tag</label>
                   <select
@@ -452,6 +450,22 @@ export default function UploadDialog({
                     <option value="in-review">In Review</option>
                     <option value="tested">Tested</option>
                     <option value="released">Released</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-slate-700">Group</label>
+                  <select
+                    value={selectedGroupName}
+                    onChange={(e) => setSelectedGroupName(e.target.value)}
+                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-indigo-500"
+                  >
+                    <option value="">Ungrouped</option>
+                    {normalizedGroupOptions.map((groupName) => (
+                      <option key={groupName} value={groupName}>
+                        {groupName}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -560,7 +574,7 @@ export default function UploadDialog({
 
                       {!hasPreviewedUploadedVideo && (
                         <p className="mt-2 text-xs text-amber-600">
-                          Please preview at least one video to enable publishing.
+                          Please preview the selected video.
                         </p>
                       )}
                     </div>

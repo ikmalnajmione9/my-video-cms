@@ -96,7 +96,7 @@ export default function AdminDialogs() {
       })
 
       if (response.ok) {
-        setCreateGroupDialogOpen(false)
+        setNewGroupName('')
         await Promise.all([refreshPosts(), refreshGroups()])
       } else {
         const error = await response.json()
@@ -248,6 +248,7 @@ export default function AdminDialogs() {
         initialTag={editingPost?.tag || 'new'}
         initialAuthor={editingPost?.author}
         initialGroupName={editingPost?.group_name ?? null}
+        groupOptions={groups.map(group => group.name)}
         postId={editingPost?.id}
         onSaved={() => {
           setUploadDialogOpen(false)
@@ -286,38 +287,86 @@ export default function AdminDialogs() {
       {/* Create Group Dialog */}
       {createGroupDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
-            <div className="mb-4">
-              <h3 className="text-lg font-bold text-slate-900">Create New Group</h3>
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="mb-5">
+              <h3 className="text-lg font-bold text-slate-900">Manage Groups</h3>
+              <p className="mt-1 text-sm text-slate-600">Create a new group, or edit and delete existing groups.</p>
             </div>
-            
-            <input
-              type="text"
-              placeholder="Group name..."
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500/60 transition-colors"
-              autoFocus
-            />
-            
+
+            <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Create Group</label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  placeholder="Group name..."
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500/60 transition-colors"
+                  autoFocus
+                />
+                <button
+                  onClick={handleCreateGroup}
+                  disabled={isCreatingGroup}
+                  className="rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isCreatingGroup ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Existing Groups</label>
+              <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3">
+                {groups.length > 0 ? (
+                  [...groups]
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((group) => (
+                      <div key={group.name} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900">{group.name}</p>
+                          <p className="text-xs text-slate-500">{group.post_count || 0} posts</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setCreateGroupDialogOpen(false)
+                              setGroupToEdit(group.name)
+                              setEditGroupDialogOpen(true)
+                            }}
+                            className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCreateGroupDialogOpen(false)
+                              setGroupToDelete(group.name)
+                              setDeleteGroupDialogOpen(true)
+                            }}
+                            className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  <p className="text-sm text-slate-500">No groups found.</p>
+                )}
+              </div>
+            </div>
+
             {groupMessage && (
-              <p className="mt-2 text-sm text-red-400">{groupMessage}</p>
+              <p className="mt-3 text-sm text-red-400">{groupMessage}</p>
             )}
-            
-            <div className="mt-6 flex gap-3 justify-end">
+
+            <div className="mt-6 flex justify-end">
               <button
                 onClick={() => setCreateGroupDialogOpen(false)}
                 className="rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 disabled={isCreatingGroup}
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateGroup}
-                disabled={isCreatingGroup}
-                className="rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isCreatingGroup ? 'Creating...' : 'Create Group'}
+                Close
               </button>
             </div>
           </div>
@@ -327,15 +376,24 @@ export default function AdminDialogs() {
       {/* Edit Group Dialog */}
       {editGroupDialogOpen && groupToEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm">
-          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-blue-200 bg-white p-6 shadow-xl">
-            <div className="mb-6 flex items-center gap-3">
-              <div className="h-8 w-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">Edit Group</h3>
+          <div className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
+            <button
+              onClick={() => {
+                setEditGroupDialogOpen(false)
+                setGroupToEdit(null)
+              }}
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+              aria-label="Close edit group dialog"
+              disabled={isEditingGroup}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="mb-6 pr-10">
+              <h3 className="text-lg font-semibold text-slate-900">Edit Group</h3>
+              <p className="mt-1 text-sm text-slate-600">Rename the group or adjust the posts inside it.</p>
             </div>
             
             {/* Group Name Section */}
@@ -359,8 +417,8 @@ export default function AdminDialogs() {
                 <p className="text-xs text-slate-600 mb-2">In this group:</p>
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {posts.filter(p => p.group_name === groupToEdit && !p.title?.startsWith('__GROUP_MARKER__')).map(post => (
-                    <div key={post.id} className="flex items-center justify-between bg-slate-100 px-3 py-2 rounded">
-                      <span className="text-sm text-slate-700 truncate">{post.title}</span>
+                    <div key={post.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <span className="text-sm font-medium text-slate-800 truncate">{post.title}</span>
                       <button
                         onClick={async () => {
                           await fetch(`/api/posts/${encodeURIComponent(String(post.id))}`, {
@@ -370,25 +428,25 @@ export default function AdminDialogs() {
                           })
                           refreshPosts()
                         }}
-                        className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-500/10"
+                        className="rounded-md px-2 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 hover:text-red-700"
                       >
                         Remove
                       </button>
                     </div>
                   ))}
                   {posts.filter(p => p.group_name === groupToEdit && !p.title?.startsWith('__GROUP_MARKER__')).length === 0 && (
-                    <p className="text-xs text-slate-600 italic">No posts in this group</p>
+                    <p className="text-xs italic text-slate-500">No posts in this group</p>
                   )}
                 </div>
               </div>
 
               {/* Posts not in group */}
               <div>
-                <p className="text-xs text-slate-400 mb-2">Add posts:</p>
+                <p className="mb-2 text-xs text-slate-600">Add posts:</p>
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {posts.filter(p => p.group_name !== groupToEdit && !p.title?.startsWith('__GROUP_MARKER__')).map(post => (
-                    <div key={post.id} className="flex items-center justify-between bg-slate-800/40 px-3 py-2 rounded">
-                      <span className="text-sm text-slate-300 truncate">{post.title}</span>
+                    <div key={post.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <span className="text-sm text-slate-800 truncate">{post.title}</span>
                       <button
                         onClick={async () => {
                           await fetch(`/api/posts/${encodeURIComponent(String(post.id))}`, {
@@ -398,14 +456,14 @@ export default function AdminDialogs() {
                           })
                           refreshPosts()
                         }}
-                        className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded hover:bg-blue-500/10"
+                        className="rounded-md px-2 py-1 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700"
                       >
                         Add
                       </button>
                     </div>
                   ))}
                   {posts.filter(p => p.group_name !== groupToEdit && !p.title?.startsWith('__GROUP_MARKER__')).length === 0 && (
-                    <p className="text-xs text-slate-600 italic">All posts are in this group</p>
+                    <p className="text-xs italic text-slate-500">All posts are in this group</p>
                   )}
                 </div>
               </div>
@@ -414,24 +472,41 @@ export default function AdminDialogs() {
             {groupMessage && (
               <p className="mb-4 text-sm text-red-400">{groupMessage}</p>
             )}
+
+            <div className="mb-4 border-t border-slate-200 pt-4">
+              <p className="text-sm text-slate-600">Delete this group permanently. All posts in it will become ungrouped.</p>
+              <button
+                onClick={() => {
+                  if (!groupToEdit) return
+                  setEditGroupDialogOpen(false)
+                  setGroupToDelete(groupToEdit)
+                  setDeleteGroupDialogOpen(true)
+                }}
+                className="mt-3 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700"
+                disabled={isEditingGroup}
+              >
+                Delete Group
+              </button>
+            </div>
             
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => {
                   setEditGroupDialogOpen(false)
-                  setGroupToEdit(null)
+                  setCreateGroupDialogOpen(true)
+                  setGroupMessage('')
                 }}
-                className="rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                className="mr-auto rounded-lg px-4 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
                 disabled={isEditingGroup}
               >
-                Close
+                Back
               </button>
               <button
                 onClick={handleEditGroup}
                 disabled={isEditingGroup}
-                className="rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isEditingGroup ? 'Saving...' : 'Rename Group'}
+                {isEditingGroup ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>

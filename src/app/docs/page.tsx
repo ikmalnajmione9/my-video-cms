@@ -3,7 +3,9 @@
 import Link from 'next/link'
 import { useAdmin } from '@/contexts/AdminContext'
 import { useViewer } from '@/contexts/ViewerContext'
-import { useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { inferPostDateFromMarkdown } from '@/lib/r2-utils'
 
 type Post = {
   id: string | number
@@ -11,6 +13,7 @@ type Post = {
   tag?: string
   author?: string
   group_name?: string
+  content_path?: string
   created_at?: string
   createdAt?: string
   published_at?: string
@@ -35,6 +38,7 @@ const getPostDateValue = (post: Post) =>
   post.inserted_at ??
   post.insertedAt ??
   post.date ??
+  inferPostDateFromMarkdown(typeof post.content_path === 'string' ? post.content_path : '') ??
   null
 
 const formatDate = (value?: string | null) => {
@@ -51,7 +55,63 @@ const getTagBadgeClass = (tag?: string) => {
   return 'bg-sky-100 text-sky-700 border border-sky-200'
 }
 
+const getPostType = (post: Post): 'Video' | 'Link' => {
+  const content = typeof post.content_path === 'string' ? post.content_path : ''
+  if (/<!--\s*VIDEO_ID:/i.test(content)) return 'Video'
+  return 'Link'
+}
+
+const getLinkUrlFromContent = (contentPath?: string | null): string | null => {
+  if (typeof contentPath !== 'string') return null
+
+  const content = contentPath.trim()
+  if (!content || content.startsWith('posts/')) return null
+
+  const markdownLinkMatch = content.match(/\[[^\]]+\]\((https?:\/\/[^)\s]+)\)/i)
+  if (markdownLinkMatch?.[1]) {
+    return markdownLinkMatch[1]
+  }
+
+  const plainUrlMatch = content.match(/^(https?:\/\/\S+)$/i)
+  if (plainUrlMatch?.[1]) {
+    return plainUrlMatch[1]
+  }
+
+  const firstUrlMatch = content.match(/https?:\/\/[^\s)]+/i)
+  return firstUrlMatch?.[0] ?? null
+}
+
+const getPostExternalUrl = (post: Post): string | null => {
+  if (getPostType(post) === 'Video') return null
+  return getLinkUrlFromContent(post.content_path)
+}
+
+const getPostDateMarkerFromContent = (contentPath?: string | null): string | null => {
+  if (typeof contentPath !== 'string') return null
+  const markerMatch = contentPath.match(/<!--\s*POST_DATE:([\s\S]*?)\s*-->/i)
+  const markerValue = markerMatch?.[1]?.trim()
+  if (!markerValue) return null
+  const parsed = new Date(markerValue)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString()
+}
+
+const POSTS_PER_PAGE = 10
+
 export default function DocsLandingPage() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const isHomeDashboard = pathname === '/'
+  const basePath = pathname?.startsWith('/user-guide-v2') || isHomeDashboard ? '/user-guide-v2' : '/docs'
+  const isUserGuideV2Dashboard = basePath === '/user-guide-v2'
+  const storagePrefix = basePath.replace(/^\//, '')
+
+  useEffect(() => {
+    if (basePath === '/docs') {
+      router.replace('/user-guide-v2')
+    }
+  }, [basePath, router])
   const {
     isAdmin,
     isLoading: adminLoading,
@@ -79,15 +139,27 @@ export default function DocsLandingPage() {
   const [browseMode, setBrowseMode] = useState<'group' | 'status'>('group')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortBy, setSortBy] = useState<'title-asc' | 'title-desc' | 'group-asc' | 'group-desc' | 'date-old-new' | 'date-new-old'>('title-asc')
+  const [sortBy, setSortBy] = useState<'title-asc' | 'title-desc' | 'date-old-new' | 'date-new-old'>('date-new-old')
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
+  const [filterType, setFilterType] = useState<'Video' | 'Link' | null>(null)
   const [filterGroup, setFilterGroup] = useState<string | null>(null)
   const [savingStatusPostId, setSavingStatusPostId] = useState<string | number | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [uploadPostMenuOpen, setUploadPostMenuOpen] = useState(false)
+  const [uploadLinkDialogOpen, setUploadLinkDialogOpen] = useState(false)
+  const [linkTitle, setLinkTitle] = useState('')
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkGroupName, setLinkGroupName] = useState('')
+  const [linkTag, setLinkTag] = useState<(typeof STATUS_OPTIONS)[number]>('new')
+  const [uploadLinkStatus, setUploadLinkStatus] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [uploadLinkMessage, setUploadLinkMessage] = useState('')
+  const [editingLinkPostId, setEditingLinkPostId] = useState<string | number | null>(null)
+  const [editingLinkDateMarker, setEditingLinkDateMarker] = useState<string | null>(null)
 
   // Restore selectedGroup and selectedStatus from localStorage
   useEffect(() => {
-    const savedGroup = localStorage.getItem('dashboard-selected-group')
-    const savedStatus = localStorage.getItem('dashboard-selected-status')
+    const savedGroup = localStorage.getItem(`${storagePrefix}-selected-group`)
+    const savedStatus = localStorage.getItem(`${storagePrefix}-selected-status`)
     if (savedGroup && savedGroup !== 'null') {
       setSelectedGroup(savedGroup)
     }
@@ -98,13 +170,38 @@ export default function DocsLandingPage() {
 
   // Save selectedGroup to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem('dashboard-selected-group', selectedGroup || '')
-  }, [selectedGroup])
+    localStorage.setItem(`${storagePrefix}-selected-group`, selectedGroup || '')
+  }, [selectedGroup, storagePrefix])
 
   // Save selectedStatus to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem('dashboard-selected-status', selectedStatus || '')
-  }, [selectedStatus])
+    localStorage.setItem(`${storagePrefix}-selected-status`, selectedStatus || '')
+  }, [selectedStatus, storagePrefix])
+
+  // Restore dashboard group filter from URL first, then localStorage fallback.
+  useEffect(() => {
+    const queryGroup = (searchParams.get('group') || '').trim()
+    const savedGroup = (localStorage.getItem(`${storagePrefix}-filter-group`) || '').trim()
+    const nextGroup = queryGroup || savedGroup || null
+    setFilterGroup(prev => (prev === nextGroup ? prev : nextGroup))
+  }, [searchParams, storagePrefix])
+
+  // Keep dashboard group filter in URL for browser history/back consistency.
+  useEffect(() => {
+    const currentQueryGroup = (searchParams.get('group') || '').trim()
+    const nextGroup = (filterGroup || '').trim()
+
+    localStorage.setItem(`${storagePrefix}-filter-group`, nextGroup)
+
+    if (currentQueryGroup === nextGroup) return
+
+    const params = new URLSearchParams(searchParams.toString())
+    if (nextGroup) params.set('group', nextGroup)
+    else params.delete('group')
+
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname
+    router.replace(nextUrl, { scroll: false })
+  }, [filterGroup, pathname, router, searchParams, storagePrefix])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -191,21 +288,6 @@ export default function DocsLandingPage() {
     fetchData()
   }, [isAdmin, posts, viewerPosts])
 
-  if (loading || adminLoading || viewerLoading) {
-    return (
-      <div className="flex min-h-screen bg-slate-50">
-        <div className="w-80 bg-white border-r border-slate-200 flex flex-col">
-          <div className="flex-1 flex items-center justify-center">
-            <div className="h-5 w-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-          </div>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="h-5 w-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-        </div>
-      </div>
-    )
-  }
-
   const total = localPosts?.length ?? 0
   const currentGroups = isAdmin ? groups : viewerGroups
   const groupNames = currentGroups.map(g => g.name)
@@ -269,11 +351,14 @@ export default function DocsLandingPage() {
       
       // Status filter
       const matchesStatusFilter = !filterStatus || normalizeTag(post.tag) === normalizeTag(filterStatus)
+
+      // Type filter
+      const matchesTypeFilter = !filterType || getPostType(post) === filterType
       
       // Group filter
       const matchesGroupFilter = !filterGroup || post.group_name === filterGroup
       
-      return matchesSearch && matchesStatusFilter && matchesGroupFilter
+      return matchesSearch && matchesStatusFilter && matchesTypeFilter && matchesGroupFilter
     })
     .sort((a, b) => {
       switch (sortBy) {
@@ -281,10 +366,6 @@ export default function DocsLandingPage() {
           return a.title.localeCompare(b.title)
         case 'title-desc':
           return b.title.localeCompare(a.title)
-        case 'group-asc':
-          return (a.group_name || '').localeCompare(b.group_name || '')
-        case 'group-desc':
-          return (b.group_name || '').localeCompare(a.group_name || '')
         case 'date-old-new':
           return new Date(getPostDateValue(a) || 0).getTime() - new Date(getPostDateValue(b) || 0).getTime()
         case 'date-new-old':
@@ -294,17 +375,53 @@ export default function DocsLandingPage() {
       }
     })
 
-  const getInitials = (name?: string) => {
-    const value = (name || 'Unknown').trim()
-    return value
-      .split(/\s+/)
-      .map(part => part[0])
-      .join('')
-      .substring(0, 2)
-      .toUpperCase() || 'U'
-  }
+  const totalPages = Math.max(1, Math.ceil(filteredAndSortedPosts.length / POSTS_PER_PAGE))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const startIndex = (safeCurrentPage - 1) * POSTS_PER_PAGE
+  const paginatedPosts = filteredAndSortedPosts.slice(startIndex, startIndex + POSTS_PER_PAGE)
+  const showingStart = filteredAndSortedPosts.length === 0 ? 0 : startIndex + 1
+  const showingEnd = filteredAndSortedPosts.length === 0
+    ? 0
+    : Math.min(startIndex + POSTS_PER_PAGE, filteredAndSortedPosts.length)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, sortBy, filterStatus, filterType, filterGroup])
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
 
   const openEdit = async (post: Post) => {
+    if (getPostType(post) === 'Link') {
+      try {
+        const res = await fetch(`/api/posts/${encodeURIComponent(String(post.id))}`)
+        if (!res.ok) throw new Error('Failed to load link post')
+        const data = await res.json()
+        const content = typeof data.content_path === 'string' ? data.content_path : ''
+        const extractedUrl = getLinkUrlFromContent(content) || ''
+        const normalizedTag = normalizeTag(data.tag)
+        const safeTag = STATUS_OPTIONS.includes(normalizedTag as (typeof STATUS_OPTIONS)[number])
+          ? (normalizedTag as (typeof STATUS_OPTIONS)[number])
+          : 'new'
+
+        setEditingLinkPostId(post.id)
+        setEditingLinkDateMarker(getPostDateMarkerFromContent(content))
+        setLinkTitle(data.title || post.title || '')
+        setLinkUrl(extractedUrl)
+        setLinkGroupName(data.group_name || '')
+        setLinkTag(safeTag)
+        setUploadLinkStatus('idle')
+        setUploadLinkMessage('')
+        setUploadLinkDialogOpen(true)
+      } catch {
+        alert('Failed to load link post for editing.')
+      }
+      return
+    }
+
     try {
       const res = await fetch(`/api/posts/${encodeURIComponent(String(post.id))}`)
       const data = await res.json()
@@ -322,6 +439,161 @@ export default function DocsLandingPage() {
     }
   }
 
+  const openUploadVideoDialog = () => {
+    setUploadPostMenuOpen(false)
+    setEditingPost(null)
+    setUploadDialogOpen(true)
+  }
+
+  const openUploadLinkDialog = () => {
+    setUploadPostMenuOpen(false)
+    setEditingLinkPostId(null)
+    setEditingLinkDateMarker(null)
+    setLinkTitle('')
+    setLinkUrl('')
+    setLinkGroupName('')
+    setLinkTag('new')
+    setUploadLinkDialogOpen(true)
+    setUploadLinkStatus('idle')
+    setUploadLinkMessage('')
+  }
+
+  const closeUploadLinkDialog = () => {
+    setUploadLinkDialogOpen(false)
+    setEditingLinkPostId(null)
+    setEditingLinkDateMarker(null)
+    setLinkTitle('')
+    setLinkUrl('')
+    setLinkGroupName('')
+    setLinkTag('new')
+    setUploadLinkStatus('idle')
+    setUploadLinkMessage('')
+  }
+
+  const handleUploadLink = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const cleanTitle = linkTitle.trim()
+    const cleanUrl = linkUrl.trim()
+
+    if (!cleanTitle || !cleanUrl) {
+      setUploadLinkStatus('error')
+      setUploadLinkMessage('Please fill in title and link.')
+      return
+    }
+
+    let normalizedUrl = cleanUrl
+    try {
+      normalizedUrl = new URL(cleanUrl).toString()
+    } catch {
+      setUploadLinkStatus('error')
+      setUploadLinkMessage('Please enter a valid URL (including http:// or https://).')
+      return
+    }
+
+    try {
+      setUploadLinkStatus('loading')
+      setUploadLinkMessage(editingLinkPostId ? 'Saving link post...' : 'Uploading link post...')
+
+      const formData = new FormData()
+      const postDateIso = editingLinkDateMarker || new Date().toISOString()
+      const markdownWithDate = `<!-- POST_DATE:${postDateIso} -->\n[Open link](${normalizedUrl})`
+
+      if (editingLinkPostId) {
+        const res = await fetch(`/api/posts/${encodeURIComponent(String(editingLinkPostId))}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: cleanTitle,
+            markdown: markdownWithDate,
+            tag: linkTag,
+            group_name: linkGroupName || null,
+          }),
+        })
+
+        const body = await res.json().catch(() => null)
+        if (!res.ok) {
+          throw new Error(body?.error || 'Failed to save link post')
+        }
+
+        await Promise.all([refreshPosts(), refreshGroups()])
+        closeUploadLinkDialog()
+        return
+      }
+
+      formData.append('title', cleanTitle)
+      formData.append('markdown', markdownWithDate)
+      formData.append('tag', linkTag)
+      formData.append('group_name', linkGroupName)
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const body = await res.json()
+      if (!res.ok) {
+        throw new Error(body?.error || 'Failed to upload link post')
+      }
+
+      await Promise.all([refreshPosts(), refreshGroups()])
+      closeUploadLinkDialog()
+    } catch (error) {
+      setUploadLinkStatus('error')
+      setUploadLinkMessage(error instanceof Error ? error.message : 'Failed to upload link post')
+    }
+  }
+
+  const handleLinkUrlInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextValue = event.target.value
+    const isDeletion = nextValue.length < linkUrl.length
+
+    if (nextValue.trim() === '') {
+      setLinkUrl('')
+      setUploadLinkStatus('idle')
+      setUploadLinkMessage('')
+      return
+    }
+
+    if (isDeletion && linkUrl.trim() !== '') {
+      setLinkUrl('')
+      setUploadLinkStatus('error')
+      setUploadLinkMessage('Link auto-cleared after edit. Paste the full URL again.')
+      return
+    }
+
+    setLinkUrl(nextValue)
+    if (uploadLinkStatus === 'error') {
+      setUploadLinkStatus('idle')
+      setUploadLinkMessage('')
+    }
+  }
+
+  if (loading || adminLoading || viewerLoading) {
+    return (
+      <div className="flex min-h-screen bg-slate-50">
+        <div className="w-80 bg-white border-r border-slate-200 flex flex-col">
+          <div className="flex-1 flex items-center justify-center">
+            <div className="h-5 w-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="h-5 w-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+        </div>
+      </div>
+    )
+  }
+
+  if (basePath === '/docs') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="h-5 w-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-screen bg-transparent">
       {/* Main Content */}
@@ -334,7 +606,7 @@ export default function DocsLandingPage() {
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-400 mb-2">Dashboard</p>
                   <h1 className="text-3xl font-extrabold text-slate-900 mb-3">Product Guide Hub</h1>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 min-w-[320px] flex-shrink-0">
+                <div className="ml-auto grid grid-cols-2 gap-3 min-w-[320px] flex-shrink-0">
                   <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                     <p className="text-[10px] uppercase tracking-widest text-slate-500">Total</p>
                     <p className="mt-1 text-2xl font-bold text-slate-900">{total}</p>
@@ -352,15 +624,57 @@ export default function DocsLandingPage() {
               <div className="mb-6 rounded-2xl border border-slate-100 bg-white p-4">
                 <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">Quick Actions</p>
                 <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={() => { setEditingPost(null); setUploadDialogOpen(true) }}
-                  className="flex items-center gap-2 rounded-md bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-colors"
-                >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                  Upload New Video
-                </button>
+                {isUserGuideV2Dashboard ? (
+                  <div className="relative">
+                    <button
+                      onClick={() => setUploadPostMenuOpen(prev => !prev)}
+                      className="flex items-center gap-2 rounded-md bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-colors"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      Upload Post
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+
+                    {uploadPostMenuOpen && (
+                      <div className="absolute left-0 top-full z-10 mt-2 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                        <button
+                          onClick={openUploadVideoDialog}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M8 17l8-5-8-5v10z" />
+                            <rect x="3" y="4" width="18" height="16" rx="2" />
+                          </svg>
+                          Upload Video
+                        </button>
+                        <button
+                          onClick={openUploadLinkDialog}
+                          className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                          </svg>
+                          Upload Link
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setEditingPost(null); setUploadDialogOpen(true) }}
+                    className="flex items-center gap-2 rounded-md bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-colors"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    Upload New Video
+                  </button>
+                )}
                 <button
                   onClick={() => setCreateGroupDialogOpen(true)}
                   className="flex items-center gap-2 rounded-md bg-violet-600 hover:bg-violet-500 px-4 py-2 text-sm font-semibold text-white transition-colors"
@@ -369,19 +683,19 @@ export default function DocsLandingPage() {
                     <path d="M12 10v6M9 13h6" />
                     <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.92 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
                   </svg>
-                  Create Group
+                  Manage Groups
                 </button>
                 </div>
               </div>
             )}
 
             <div className="rounded-2xl border border-slate-100 bg-white p-5">
-              <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-4">All Videos</h2>
+              <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-4">All Posts</h2>
               
               {/* Search, Sort, and Filter Bar */}
-              <div className="flex flex-col gap-4 mb-4 md:flex-row md:items-end md:gap-3">
+              <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-end md:gap-3">
                 {/* Search Bar */}
-                <div className="flex-1">
+                <div className="w-full md:max-w-[420px]">
                   <label className="block text-xs font-semibold text-slate-600 mb-2">Search</label>
                   <div className="relative">
                     <input
@@ -405,20 +719,19 @@ export default function DocsLandingPage() {
                   </div>
                 </div>
 
+                <div className="flex flex-col gap-4 md:ml-auto md:flex-row md:items-end md:gap-3">
                 {/* Sort Dropdown */}
                 <div className="min-w-[180px]">
                   <label className="block text-xs font-semibold text-slate-600 mb-2">Sort By</label>
                   <select
                     value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as 'title-asc' | 'title-desc' | 'group-asc' | 'group-desc' | 'date-old-new' | 'date-new-old')}
+                    onChange={(e) => setSortBy(e.target.value as 'title-asc' | 'title-desc' | 'date-old-new' | 'date-new-old')}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
                   >
+                    <option value="date-new-old">Date (New → Old)</option>
+                    <option value="date-old-new">Date (Old → New)</option>
                     <option value="title-asc">Title (A → Z)</option>
                     <option value="title-desc">Title (Z → A)</option>
-                    <option value="group-asc">Group (A → Z)</option>
-                    <option value="group-desc">Group (Z → A)</option>
-                    <option value="date-old-new">Date (Old → New)</option>
-                    <option value="date-new-old">Date (New → Old)</option>
                   </select>
                 </div>
 
@@ -438,6 +751,20 @@ export default function DocsLandingPage() {
                   </select>
                 </div>
 
+                {/* Type Filter Dropdown */}
+                <div className="min-w-[180px]">
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">By Type</label>
+                  <select
+                    value={filterType || ''}
+                    onChange={(e) => setFilterType((e.target.value as 'Video' | 'Link') || null)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
+                  >
+                    <option value="">All Types</option>
+                    <option value="Video">Video</option>
+                    <option value="Link">Link</option>
+                  </select>
+                </div>
+
                 {/* Group Filter Dropdown */}
                 {(currentGroups?.length ?? 0) > 0 && (
                   <div className="min-w-[180px]">
@@ -454,18 +781,19 @@ export default function DocsLandingPage() {
                     </select>
                   </div>
                 )}
-
+                </div>
 
               </div>
 
               {/* Results Count */}
               <div className="text-xs text-slate-500 mb-3">
-                Showing {filteredAndSortedPosts.length} of {localPosts.length} videos
+                Showing {showingStart}-{showingEnd} of {filteredAndSortedPosts.length} filtered posts ({localPosts.length} total)
               </div>
 
               <div className="overflow-hidden rounded-2xl border border-slate-100">
-                <div className="hidden grid-cols-[minmax(0,1fr)_170px_170px_170px_170px_52px] gap-4 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 md:grid">
+                <div className="hidden grid-cols-[minmax(0,1fr)_170px_170px_170px_170px_170px_52px] gap-4 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 md:grid">
                   <div>Name</div>
+                  <div className="text-center">Type</div>
                   <div className="text-center">Status</div>
                   <div>Group</div>
                   <div>Author</div>
@@ -473,17 +801,38 @@ export default function DocsLandingPage() {
                   <div className="text-right"> </div>
                 </div>
                 {filteredAndSortedPosts.length > 0 ? (
-                  filteredAndSortedPosts.map(post => (
+                  paginatedPosts.map(post => (
+                    (() => {
+                      const externalUrl = getPostExternalUrl(post)
+                      return (
                     <div
                       key={post.id}
-                      className="group grid gap-3 border-t border-slate-100 px-4 py-4 transition-colors hover:bg-slate-50 md:grid-cols-[minmax(0,1fr)_170px_170px_170px_170px_52px] md:items-center"
+                      className="group grid gap-3 border-t border-slate-100 px-4 py-4 transition-colors hover:bg-slate-50 md:grid-cols-[minmax(0,1fr)_170px_170px_170px_170px_170px_52px] md:items-center"
                     >
-                      <Link
-                        href={`/docs/${post.id}`}
-                        className="min-w-0 text-sm text-slate-800 transition-colors group-hover:text-slate-950"
-                      >
-                        <span className="block truncate font-semibold text-slate-900">{post.title}</span>
-                      </Link>
+                      {externalUrl ? (
+                        <a
+                          href={externalUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="min-w-0 text-sm text-slate-800 transition-colors group-hover:text-slate-950"
+                          title="Open link in new tab"
+                        >
+                          <span className="block truncate font-semibold text-slate-900">{post.title}</span>
+                        </a>
+                      ) : (
+                        <Link
+                          href={filterGroup ? `${basePath}/${post.id}?group=${encodeURIComponent(filterGroup)}` : `${basePath}/${post.id}`}
+                          className="min-w-0 text-sm text-slate-800 transition-colors group-hover:text-slate-950"
+                        >
+                          <span className="block truncate font-semibold text-slate-900">{post.title}</span>
+                        </Link>
+                      )}
+
+                      <div className="text-sm md:whitespace-nowrap md:text-center">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${getPostType(post) === 'Video' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-violet-50 text-violet-700 border border-violet-200'}`}>
+                          {getPostType(post)}
+                        </span>
+                      </div>
 
                       <div className="flex items-center justify-center gap-2 md:whitespace-nowrap">
                         {isAdmin ? (
@@ -510,10 +859,7 @@ export default function DocsLandingPage() {
                         <span className="block truncate">{post.group_name || '—'}</span>
                       </div>
 
-                      <div className="flex min-w-0 items-center gap-3 text-sm text-slate-600 md:whitespace-nowrap">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-700">
-                          {getInitials(post.author)}
-                        </span>
+                      <div className="min-w-0 text-sm text-slate-600 md:whitespace-nowrap">
                         <span className="min-w-0 truncate">{post.author || 'Unknown'}</span>
                       </div>
 
@@ -536,28 +882,183 @@ export default function DocsLandingPage() {
                             </button>
                           </>
                         )}
-                        <Link
-                          href={`/docs/${post.id}`}
-                          className="text-slate-500 transition-colors group-hover:text-slate-700"
-                          aria-label={`Open ${post.title}`}
-                        >
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M9 5l7 7-7 7" />
-                          </svg>
-                        </Link>
+                        {externalUrl ? (
+                          <a
+                            href={externalUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-slate-500 transition-colors group-hover:text-slate-700"
+                            aria-label={`Open ${post.title} in a new tab`}
+                          >
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M9 5l7 7-7 7" />
+                            </svg>
+                          </a>
+                        ) : (
+                          <Link
+                            href={filterGroup ? `${basePath}/${post.id}?group=${encodeURIComponent(filterGroup)}` : `${basePath}/${post.id}`}
+                            className="text-slate-500 transition-colors group-hover:text-slate-700"
+                            aria-label={`Open ${post.title}`}
+                          >
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M9 5l7 7-7 7" />
+                            </svg>
+                          </Link>
+                        )}
                       </div>
                     </div>
+                      )
+                    })()
                   ))
                 ) : (
                   <div className="text-center py-8">
-                    <p className="text-slate-500 text-sm">No videos found matching your search or filters.</p>
+                    <p className="text-slate-500 text-sm">No posts found matching your search or filters.</p>
                   </div>
                 )}
               </div>
+
+              {(
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-slate-500">
+                    Page {safeCurrentPage} of {totalPages}
+                  </p>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={safeCurrentPage === 1}
+                      className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                          safeCurrentPage === page
+                            ? 'border-blue-200 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={safeCurrentPage === totalPages}
+                      className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </main>
       </div>
+
+      {uploadLinkDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-100 bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">{editingLinkPostId ? 'Edit Link' : 'Upload Link'}</h3>
+              <button
+                type="button"
+                onClick={closeUploadLinkDialog}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Close upload link dialog"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form className="space-y-3" onSubmit={handleUploadLink}>
+              <div>
+                <label className="block text-sm text-slate-700">Title</label>
+                <input
+                  type="text"
+                  value={linkTitle}
+                  onChange={(e) => setLinkTitle(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition-colors focus:border-blue-500"
+                  placeholder="Enter post title"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-700">Link</label>
+                <input
+                  type="url"
+                  value={linkUrl}
+                  onChange={handleLinkUrlInputChange}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition-colors focus:border-blue-500"
+                  placeholder="Paste your URL here"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-700">Status Tag</label>
+                <select
+                  value={linkTag}
+                  onChange={(e) => setLinkTag(e.target.value as (typeof STATUS_OPTIONS)[number])}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-indigo-500"
+                >
+                  <option value="new">New</option>
+                  <option value="in-review">In Review</option>
+                  <option value="tested">Tested</option>
+                  <option value="released">Released</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-700">Group</label>
+                <select
+                  value={linkGroupName}
+                  onChange={(e) => setLinkGroupName(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition-colors focus:border-blue-500"
+                >
+                  <option value="">Ungrouped</option>
+                  {currentGroups
+                    .map(group => group.name)
+                    .sort((a, b) => a.localeCompare(b))
+                    .map(groupName => (
+                      <option key={groupName} value={groupName}>
+                        {groupName}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {uploadLinkStatus === 'error' && uploadLinkMessage && (
+                <p className="text-sm text-red-500">{uploadLinkMessage}</p>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeUploadLinkDialog}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploadLinkStatus === 'loading'}
+                  className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {uploadLinkStatus === 'loading' ? (editingLinkPostId ? 'Saving...' : 'Uploading...') : (editingLinkPostId ? 'Save Changes' : 'Upload Link')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

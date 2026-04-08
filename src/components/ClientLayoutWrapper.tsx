@@ -1,7 +1,6 @@
 "use client"
 
 import React from 'react'
-import TopNav from './TopNav'
 
 interface ClientLayoutWrapperProps {
   children: React.ReactNode
@@ -11,7 +10,6 @@ interface ClientLayoutWrapperProps {
 export default function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   return (
     <div className="flex flex-col h-screen font-sans overflow-hidden bg-background text-foreground">
-      <TopNav />
       <main className="flex-1 overflow-y-auto custom-scrollbar relative px-4 sm:px-8">
         <div className="relative z-0 h-full py-8">
           {children}

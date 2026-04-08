@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 type Post = {
   id: string | number
@@ -22,7 +23,9 @@ const getTagBadgeClass = (tag?: string) => {
 }
 
 export default function PostsExplorer({ posts }: { posts: Post[] }) {
+  const searchParams = useSearchParams()
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
+  const selectedGroup = (searchParams.get('group') || '').trim() || null
 
   // Get all statuses: defaults + custom from posts
   const allStatuses = useMemo(() => {
@@ -37,11 +40,20 @@ export default function PostsExplorer({ posts }: { posts: Post[] }) {
 
   // Get displayed posts based on filters
   const displayedPosts = useMemo(() => {
+    const byGroup = selectedGroup
+      ? posts.filter(p => (p.group_name || '').trim() === selectedGroup)
+      : posts
+
     if (selectedStatus) {
-      return posts.filter(p => normalizeTag(p.tag) === selectedStatus)
+      return byGroup.filter(p => normalizeTag(p.tag) === selectedStatus)
     }
+
+    if (selectedGroup) {
+      return byGroup
+    }
+
     return []
-  }, [posts, selectedStatus])
+  }, [posts, selectedStatus, selectedGroup])
 
   const getStatusCount = (status: string) => {
     return posts.filter(p => normalizeTag(p.tag) === status).length
@@ -78,9 +90,20 @@ export default function PostsExplorer({ posts }: { posts: Post[] }) {
 
       {/* Videos Display */}
       <div className="rounded-lg border border-slate-100 bg-white p-6">
+        {selectedGroup && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2">
+            <div className="text-xs text-violet-800">
+              Showing videos for group: <span className="font-bold uppercase tracking-wide">{selectedGroup}</span>
+            </div>
+            <Link href="/posts" className="text-xs font-semibold text-violet-700 hover:text-violet-900 hover:underline">
+              Clear group filter
+            </Link>
+          </div>
+        )}
+
         {posts.length === 0 && <p className="text-sm text-slate-600">No videos available yet.</p>}
 
-        {posts.length > 0 && !selectedStatus && (
+        {posts.length > 0 && !selectedStatus && !selectedGroup && (
           <p className="text-sm text-slate-600">Select a status above to view videos.</p>
         )}
 
@@ -97,7 +120,7 @@ export default function PostsExplorer({ posts }: { posts: Post[] }) {
               {displayedPosts.map(post => (
                 <Link
                   key={post.id}
-                  href={`/posts/${post.id}`}
+                  href={selectedGroup ? `/posts/${post.id}?group=${encodeURIComponent(selectedGroup)}` : `/posts/${post.id}`}
                   className="flex items-center justify-between p-4 rounded-lg border border-slate-100 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 transition-colors"
                 >
                   <div className="flex-1 min-w-0">

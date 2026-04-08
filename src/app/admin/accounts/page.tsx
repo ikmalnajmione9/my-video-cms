@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase-client'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 
 type User = {
   id: string
@@ -21,8 +20,10 @@ export default function AccountsPage() {
   const [usersLoading, setUsersLoading] = useState(true)
   const [error, setError] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
-  const [invitePassword, setInvitePassword] = useState('')
   const [inviting, setInviting] = useState(false)
+  const [latestInviteLink, setLatestInviteLink] = useState('')
+  const [copyingInviteLink, setCopyingInviteLink] = useState(false)
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false)
   const [removingUserId, setRemovingUserId] = useState('')
   const [notice, setNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
   const [passkeyModalOpen, setPasskeyModalOpen] = useState(false)
@@ -30,25 +31,70 @@ export default function AccountsPage() {
   const [pendingAction, setPendingAction] = useState<{ type: 'create' } | { type: 'remove'; user: User } | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) router.replace('/login')
-      else {
-        setCurrentUserId(session.user.id)
-        setLoading(false)
-        fetchUsers()
+    const bootstrap = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/login')
+        return
       }
-    })
+
+      try {
+        const meRes = await fetch('/api/admin/me', {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        })
+
+        if (!meRes.ok) {
+          throw new Error('Unable to verify account role.')
+        }
+
+        const meData = await meRes.json()
+        if (!meData?.user?.is_admin) {
+          setError('Only admin users can access Manage Accounts.')
+          router.replace('/user-guide-v2')
+          return
+        }
+
+        setCurrentUserId(session.user.id)
+        await fetchUsers()
+        setLoading(false)
+      } catch (e: any) {
+        setError(e?.message || 'Failed to verify account role.')
+        setLoading(false)
+      }
+    }
+
+    void bootstrap()
   }, [router])
+
+  const getAuthHeaders = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) {
+      throw new Error('Session expired. Please log in again.')
+    }
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    }
+
+    return headers
+  }
 
   const fetchUsers = async () => {
     setUsersLoading(true)
     try {
-      const res = await fetch('/api/admin/users')
+      const headers = await getAuthHeaders()
+      const res = await fetch('/api/admin/users', { headers })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to load users')
       setUsers(data.users)
+      return true
     } catch (e: any) {
       setError(e.message || 'Failed to load users')
+      return false
     } finally {
       setUsersLoading(false)
     }
@@ -56,11 +102,11 @@ export default function AccountsPage() {
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inviteEmail || !invitePassword) return
+    if (!inviteEmail) return
     setPendingAction({ type: 'create' })
     setPasskey('')
     setPasskeyModalOpen(true)
-    setNotice({ type: 'info', text: 'Enter admin passkey to create this account.' })
+    setNotice({ type: 'info', text: 'Enter admin passkey to create an invite link.' })
   }
 
   const handleRemoveClick = (user: User) => {
@@ -80,21 +126,23 @@ export default function AccountsPage() {
     if (pendingAction.type === 'create') {
       setInviting(true)
       try {
+        const headers = await getAuthHeaders()
         const res = await fetch('/api/admin/users', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: inviteEmail, password: invitePassword, passkey: passkey.trim() }),
+          headers,
+          body: JSON.stringify({ email: inviteEmail, passkey: passkey.trim(), mode: 'invite' }),
         })
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error || 'Failed to create user')
-        setNotice({ type: 'success', text: `Account created for ${inviteEmail}.` })
+        if (!res.ok) throw new Error(data.error || 'Failed to create invite')
+        setLatestInviteLink(data?.invite?.share_link || data?.invite?.action_link || '')
+        setInviteLinkCopied(false)
+        setNotice({ type: 'success', text: `Invite link generated for ${inviteEmail}. Share it with the user.` })
         setInviteEmail('')
-        setInvitePassword('')
         setPasskeyModalOpen(false)
         setPendingAction(null)
         fetchUsers()
       } catch (e: any) {
-        setNotice({ type: 'error', text: e.message || 'Failed to create user.' })
+        setNotice({ type: 'error', text: e.message || 'Failed to create invite.' })
       } finally {
         setInviting(false)
       }
@@ -104,9 +152,10 @@ export default function AccountsPage() {
     const targetUser = pendingAction.user
     setRemovingUserId(targetUser.id)
     try {
+      const headers = await getAuthHeaders()
       const res = await fetch('/api/admin/users', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ userId: targetUser.id, passkey: passkey.trim() }),
       })
       const data = await res.json()
@@ -127,6 +176,22 @@ export default function AccountsPage() {
     setPasskeyModalOpen(false)
     setPendingAction(null)
     setPasskey('')
+  }
+
+  const handleCopyInviteLink = async () => {
+    if (!latestInviteLink || copyingInviteLink) return
+
+    setCopyingInviteLink(true)
+    try {
+      await navigator.clipboard.writeText(latestInviteLink)
+      setInviteLinkCopied(true)
+      setNotice({ type: 'success', text: 'Invite link copied to clipboard.' })
+      setTimeout(() => setInviteLinkCopied(false), 1800)
+    } catch {
+      setNotice({ type: 'error', text: 'Failed to copy invite link. Please copy manually.' })
+    } finally {
+      setCopyingInviteLink(false)
+    }
   }
 
   if (loading) {
@@ -165,7 +230,7 @@ export default function AccountsPage() {
         {/* Add account */}
         <div className="rounded-lg border border-slate-200 bg-white p-6">
           <h2 className="text-sm font-bold text-slate-900 mb-1">Add New Account</h2>
-          <p className="text-xs text-slate-500 mb-4">Creates a new user in Supabase Auth. They can then log in and manage videos.</p>
+          <p className="text-xs text-slate-500 mb-4">Generates a single-use invite link for a new user.</p>
           <form onSubmit={handleAddUser} className="flex flex-wrap gap-3 items-end">
             <div className="flex-1 min-w-[200px]">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Email</label>
@@ -178,26 +243,30 @@ export default function AccountsPage() {
                 className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500/60 transition-colors"
               />
             </div>
-            <div className="flex-1 min-w-[180px]">
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Password</label>
-              <input
-                type="password"
-                value={invitePassword}
-                onChange={e => setInvitePassword(e.target.value)}
-                required
-                placeholder="min. 6 characters"
-                minLength={6}
-                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500/60 transition-colors"
-              />
-            </div>
             <button
               type="submit"
               disabled={inviting}
               className="rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 text-sm font-semibold text-white transition-colors"
             >
-              {inviting ? 'Creating...' : 'Create Account'}
+              {inviting ? 'Generating...' : 'Generate Invite'}
             </button>
           </form>
+          {latestInviteLink && (
+            <div className="mt-4 rounded border border-emerald-200 bg-emerald-50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-emerald-800">Latest Invite Link</p>
+                <button
+                  type="button"
+                  onClick={handleCopyInviteLink}
+                  disabled={copyingInviteLink}
+                  className="rounded border border-emerald-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                >
+                  {inviteLinkCopied ? 'Copied' : copyingInviteLink ? 'Copying...' : 'Copy Link'}
+                </button>
+              </div>
+              <p className="mt-1 break-all text-xs text-emerald-900">{latestInviteLink}</p>
+            </div>
+          )}
         </div>
 
         {/* Users table */}

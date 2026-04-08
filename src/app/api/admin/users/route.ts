@@ -1,5 +1,30 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireAdminUser } from '@/lib/api-auth'
+
+function buildShareableInviteLink(args: {
+  redirectTo?: string
+  actionLink?: string
+  hashedToken?: string
+  email: string
+}) {
+  const { redirectTo, actionLink, hashedToken, email } = args
+
+  if (!redirectTo || !hashedToken) {
+    return actionLink || ''
+  }
+
+  try {
+    const redirectUrl = new URL(redirectTo)
+    const shareUrl = new URL(redirectUrl.pathname || '/invite', redirectUrl.origin)
+    shareUrl.searchParams.set('token_hash', hashedToken)
+    shareUrl.searchParams.set('type', 'invite')
+    shareUrl.searchParams.set('email', email)
+    return shareUrl.toString()
+  } catch {
+    return actionLink || ''
+  }
+}
 
 function getAdminClient() {
   return createClient(
@@ -23,7 +48,12 @@ function validateActionPasskey(passkey?: string) {
   return { ok: true }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireAdminUser(request)
+  if (!auth.ok) {
+    return auth.response
+  }
+
   const supabaseAdmin = getAdminClient()
   const { data, error } = await supabaseAdmin.auth.admin.listUsers()
 
@@ -43,17 +73,56 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAdminUser(request)
+  if (!auth.ok) {
+    return auth.response
+  }
+
   const supabaseAdmin = getAdminClient()
   const body = await request.json()
-  const { email, password, passkey } = body
+  const { email, password, passkey, mode = 'invite' } = body
 
-  if (!email || !password) {
-    return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 })
+  if (!email) {
+    return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
   }
 
   const passkeyValidation = validateActionPasskey(passkey)
   if (!passkeyValidation.ok) {
     return NextResponse.json({ error: passkeyValidation.message }, { status: 403 })
+  }
+
+  if (mode === 'invite') {
+    const redirectTo = process.env.INVITE_REDIRECT_URL
+    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: redirectTo ? { redirectTo } : undefined,
+    })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    const actionLink = data.properties.action_link
+    const shareLink = buildShareableInviteLink({
+      redirectTo,
+      actionLink,
+      hashedToken: data.properties.hashed_token,
+      email,
+    })
+
+    return NextResponse.json({
+      invite: {
+        email,
+        action_link: actionLink,
+        share_link: shareLink,
+        expires_at: data.properties.email_otp_expires_at,
+      },
+    })
+  }
+
+  if (!password) {
+    return NextResponse.json({ error: 'Password is required for manual mode.' }, { status: 400 })
   }
 
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
@@ -70,6 +139,11 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = await requireAdminUser(request)
+  if (!auth.ok) {
+    return auth.response
+  }
+
   const supabaseAdmin = getAdminClient()
   const body = await request.json()
   const { userId, passkey } = body
@@ -83,7 +157,9 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: passkeyValidation.message }, { status: 403 })
   }
 
-  const { error } = await supabaseAdmin.auth.admin.deleteUser(userId)
+  // Soft delete keeps relational integrity for existing records (e.g. posts)
+  // while still disabling the account from signing in.
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(userId, true)
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

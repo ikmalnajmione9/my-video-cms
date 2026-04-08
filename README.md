@@ -8,6 +8,24 @@ Before running the application, you need to configure Cloudflare R2 storage for 
 
 **See [R2_SETUP.md](./R2_SETUP.md) for detailed Cloudflare R2 configuration instructions.**
 
+You also need Supabase environment variables for authentication and account management.
+
+Create a `.env.local` file with:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+ADMIN_ACTION_PASSKEY=...
+ADMIN_USER_EMAILS=admin1@example.com,admin2@example.com
+INVITE_REDIRECT_URL=http://localhost:3000/invite
+```
+
+Notes:
+- `ADMIN_USER_EMAILS` controls which signed-in users can use `/admin/accounts` API actions.
+- `ADMIN_ACTION_PASSKEY` is still required as a second factor for create/remove user actions.
+- `INVITE_REDIRECT_URL` is used when generating Supabase invite links.
+
 ### Running the Development Server
 
 First, run the development server:
@@ -23,6 +41,14 @@ bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## Account Provisioning Flow
+
+1. Sign in using an email listed in `ADMIN_USER_EMAILS`.
+2. Open the Manage Accounts page.
+3. Enter the target email and generate an invite.
+4. Confirm with `ADMIN_ACTION_PASSKEY`.
+5. Share the generated invite link with the user.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

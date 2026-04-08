@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
 import { extractR2VideoKeyFromMarkdown, deleteVideoFromR2 } from '@/lib/r2-utils'
+import { inferPostDateFromMarkdown } from '@/lib/r2-utils'
 
 function normalizePostDate(post: Record<string, any>) {
   const createdAt =
@@ -13,6 +14,7 @@ function normalizePostDate(post: Record<string, any>) {
     post.inserted_at ??
     post.insertedAt ??
     post.date ??
+    inferPostDateFromMarkdown(typeof post.content_path === 'string' ? post.content_path : '') ??
     null
 
   return {

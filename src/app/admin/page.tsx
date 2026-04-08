@@ -7,8 +7,8 @@ export default function AdminPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Admin functionality is now integrated into /docs
-    router.replace('/docs')
+    // Admin access now starts at /login
+    router.replace('/login')
   }, [router])
 
   return (

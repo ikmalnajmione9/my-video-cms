@@ -16,6 +16,7 @@ type Post = {
 
 interface AdminContextType {
   isAdmin: boolean
+  canManageAccounts: boolean
   isLoading: boolean
   session: any
   posts: Post[]
@@ -55,6 +56,7 @@ const AdminContext = createContext<AdminContextType | undefined>(undefined)
 export function AdminProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
   const [isAdmin, setIsAdmin] = useState(false)
+  const [canManageAccounts, setCanManageAccounts] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [session, setSession] = useState<any>(null)
   const [posts, setPosts] = useState<Post[]>([])
@@ -75,6 +77,31 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const [deletePostDialogOpen, setDeletePostDialogOpen] = useState(false)
   const [postToDelete, setPostToDelete] = useState<Post | null>(null)
 
+  const checkCanManageAccounts = async (accessToken?: string) => {
+    if (!accessToken) {
+      setCanManageAccounts(false)
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/me', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+
+      if (!response.ok) {
+        setCanManageAccounts(false)
+        return
+      }
+
+      const data = await response.json()
+      setCanManageAccounts(!!data?.user?.is_admin)
+    } catch {
+      setCanManageAccounts(false)
+    }
+  }
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -90,11 +117,13 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         // Any authenticated user is considered admin (no role-based system)
         setSession(session)
         setIsAdmin(!!session)
+        await checkCanManageAccounts(session?.access_token)
         setIsLoading(false)
       } catch (error) {
         console.error('Auth check failed or timed out:', error)
         setSession(null)
         setIsAdmin(false)
+        setCanManageAccounts(false)
         setIsLoading(false)
       }
     }
@@ -104,6 +133,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       setIsAdmin(!!session)
+      void checkCanManageAccounts(session?.access_token)
       if (!session) {
         setSession(null)
       }
@@ -174,6 +204,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   const value: AdminContextType = {
     isAdmin,
+    canManageAccounts,
     isLoading,
     session,
     posts,

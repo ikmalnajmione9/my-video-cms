@@ -14,6 +14,8 @@ function isR2VideoKey(id: string): boolean {
 
 export default async function PostPage(props: any) {
   const { id } = await props.params
+  const searchParams = await props.searchParams
+  const contextGroup = typeof searchParams?.group === 'string' ? searchParams.group.trim() : ''
 
   const { data: post, error } = await supabaseServer
     .from('posts')
@@ -40,6 +42,10 @@ export default async function PostPage(props: any) {
   const markerVideoId = markerVideoIdMatch?.[1]?.trim() ?? null
   const markerVideoTitle = (markerVideoTitleMatch?.[1] || 'Uploaded Video').trim()
   const postDate = post.created_at ?? inferPostDateFromMarkdown(typeof post.content_path === 'string' ? post.content_path : '')
+  const breadcrumbGroup = contextGroup || (typeof post.group_name === 'string' ? post.group_name : '')
+  const allPostsHref = breadcrumbGroup
+    ? `/posts?group=${encodeURIComponent(breadcrumbGroup)}`
+    : '/posts'
   const visibleMarkdown = markdown
     .replace(/\n?<!--\s*VIDEO_ID:[\s\S]*?-->/gi, '')
     .replace(/\n?<!--\s*VIDEO_TITLE:[\s\S]*?-->/gi, '')
@@ -50,17 +56,17 @@ export default async function PostPage(props: any) {
       {/* Breadcrumb Navigation */}
       <nav className="bg-white border-b border-slate-200 px-8 py-3">
         <div className="max-w-5xl mx-auto flex items-center gap-2 text-sm">
-          <Link href="/docs" className="text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors">
+          <Link href={allPostsHref} className="text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors">
             All
           </Link>
           <span className="text-slate-400">/</span>
-          {post.group_name && (
+          {breadcrumbGroup && (
             <>
               <Link 
-                href={`/posts/groups/${encodeURIComponent(post.group_name)}`} 
+                href={`/posts?group=${encodeURIComponent(breadcrumbGroup)}`} 
                 className="text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors truncate"
               >
-                {post.group_name}
+                {breadcrumbGroup}
               </Link>
               <span className="text-slate-400">/</span>
             </>

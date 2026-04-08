@@ -145,6 +145,17 @@ export function extractR2UploadTimestampFromKey(key: string): number | null {
  * Infer a post date from markdown or marker content that references an uploaded R2 video.
  */
 export function inferPostDateFromMarkdown(markdown: string): string | null {
+  if (!markdown) return null
+
+  const markerDateMatch = markdown.match(/<!--\s*POST_DATE:([\s\S]*?)\s*-->/i)
+  const markerDate = markerDateMatch?.[1]?.trim()
+  if (markerDate) {
+    const parsed = new Date(markerDate)
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString()
+    }
+  }
+
   const videoKey = extractR2VideoKeyFromMarkdown(markdown)
   if (!videoKey) return null
 

@@ -1,6 +1,12 @@
+"use client"
+
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 export default function Sidebar({ posts, activeId }: any) {
+  const searchParams = useSearchParams()
+  const activeGroup = (searchParams.get('group') || '').trim()
+
   return (
     <aside className="w-72 bg-white border-r border-slate-200 flex flex-col font-sans">
       {/* Header */}
@@ -21,7 +27,7 @@ export default function Sidebar({ posts, activeId }: any) {
         {posts.map((post: any) => (
           <Link
             key={post.id}
-            href={`/posts/${post.id}`}
+            href={activeGroup ? `/posts/${post.id}?group=${encodeURIComponent(activeGroup)}` : `/posts/${post.id}`}
             className={`block px-4 py-3 text-sm border-l-2
               ${
                 activeId === post.id

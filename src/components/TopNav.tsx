@@ -8,9 +8,11 @@ import { usePathname, useRouter } from 'next/navigation'
 export default function TopNav() {
   const router = useRouter()
   const pathname = usePathname()
+  const [canManageAccounts, setCanManageAccounts] = useState(false)
   const [session, setSession] = useState<any>(null)
   const [initials, setInitials] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -18,13 +20,40 @@ export default function TopNav() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       updateUserData(session)
+      void updateCanManageAccounts(session?.access_token)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       updateUserData(session)
+      void updateCanManageAccounts(session?.access_token)
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  const updateCanManageAccounts = async (accessToken?: string) => {
+    if (!accessToken) {
+      setCanManageAccounts(false)
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/me', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+
+      if (!response.ok) {
+        setCanManageAccounts(false)
+        return
+      }
+
+      const data = await response.json()
+      setCanManageAccounts(!!data?.user?.is_admin)
+    } catch {
+      setCanManageAccounts(false)
+    }
+  }
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -35,6 +64,10 @@ export default function TopNav() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [pathname])
 
   const updateUserData = (session: any) => {
     if (session?.user) {
@@ -55,17 +88,34 @@ export default function TopNav() {
   }
 
   const isDocsActive = pathname === '/docs' || pathname.startsWith('/docs/')
+  const isUserGuideV2Active = pathname === '/user-guide-v2' || pathname.startsWith('/user-guide-v2/')
   const isAccountsActive = pathname === '/admin/accounts' || pathname.startsWith('/admin/accounts/')
 
   return (
-    <nav 
-      className="h-14 border-b backdrop-blur-xl flex items-center px-6 gap-6 sticky top-0 z-40 shadow-sm"
-      style={{
-        backgroundColor: 'var(--nav-bg)',
-        borderColor: 'var(--border)',
-        color: 'var(--foreground)'
-      }}
-    >
+    <>
+      <nav
+        className="h-14 border-b backdrop-blur-xl flex items-center px-3 sm:px-6 gap-3 sm:gap-6 sticky top-0 z-40 shadow-sm"
+        style={{
+          backgroundColor: 'var(--nav-bg)',
+          borderColor: 'var(--border)',
+          color: 'var(--foreground)'
+        }}
+      >
+      <button
+        type="button"
+        onClick={() => setSidebarOpen(prev => !prev)}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors"
+        style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+        aria-label="Toggle navigation sidebar"
+        aria-expanded={sidebarOpen}
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M4 7h16" />
+          <path d="M4 12h16" />
+          <path d="M4 17h16" />
+        </svg>
+      </button>
+
       {/* Brand */}
       <Link
         href="/"
@@ -74,7 +124,7 @@ export default function TopNav() {
         onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
         onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
       >
-        Net7 Product Guide Web
+        Net7 Product Guide Hub
       </Link>
 
       {/* Dashboard removed */}
@@ -82,7 +132,7 @@ export default function TopNav() {
       {/* Nav links — always visible */}
       <Link
         href="/docs"
-        className={`text-sm transition-colors whitespace-nowrap ${
+        className={`hidden md:inline-block text-sm transition-colors whitespace-nowrap ${
           isDocsActive
             ? 'font-semibold'
             : ''
@@ -93,14 +143,30 @@ export default function TopNav() {
         onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
         onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
       >
-        User Guide Videos
+        User Guide
+      </Link>
+
+      <Link
+        href="/user-guide-v2"
+        className={`hidden md:inline-block text-sm transition-colors whitespace-nowrap ${
+          isUserGuideV2Active
+            ? 'font-semibold'
+            : ''
+        }`}
+        style={{
+          color: isUserGuideV2Active ? 'var(--accent-blue)' : 'var(--secondary-text)'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+        onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+      >
+        Product Guide
       </Link>
 
       {/* Admin-only links */}
-      {session && (
+      {session && canManageAccounts && (
         <Link
           href="/admin/accounts"
-          className={`text-sm transition-colors whitespace-nowrap ${
+          className={`hidden md:inline-block text-sm transition-colors whitespace-nowrap ${
             isAccountsActive
               ? 'font-semibold'
               : ''
@@ -261,6 +327,78 @@ export default function TopNav() {
         </>
       )}
       </div>
-    </nav>
+      </nav>
+
+      {sidebarOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-slate-900/40"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+          <aside
+            className="fixed top-14 left-0 bottom-0 z-50 w-80 max-w-[88vw] border-r bg-white overflow-y-auto shadow-2xl"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            <div className="p-4">
+              <div className="mb-4 pb-3 border-b flex items-center justify-between gap-2" style={{ borderColor: 'var(--border)' }}>
+                <Link href="/" className="text-[13px] font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
+                  Net7 Product Guide Hub
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(false)}
+                  className="inline-flex items-center justify-center"
+                  style={{ color: 'var(--secondary-text)' }}
+                  aria-label="Close sidebar"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M6 6l12 12" />
+                    <path d="M18 6l-12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-1">
+                <Link
+                  href="/docs"
+                  className={`block rounded px-2 py-2 text-sm transition-colors ${
+                    isDocsActive
+                      ? 'bg-blue-50 text-blue-700 font-semibold'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  User Guide
+                </Link>
+
+                <Link
+                  href="/user-guide-v2"
+                  className={`block rounded px-2 py-2 text-sm transition-colors ${
+                    isUserGuideV2Active
+                      ? 'bg-blue-50 text-blue-700 font-semibold'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  Product Guide
+                </Link>
+
+                {session && canManageAccounts && (
+                  <Link
+                    href="/admin/accounts"
+                    className={`block rounded px-2 py-2 text-sm transition-colors ${
+                      isAccountsActive
+                        ? 'bg-blue-50 text-blue-700 font-semibold'
+                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    Manage Accounts
+                  </Link>
+                )}
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
+    </>
   )
 }

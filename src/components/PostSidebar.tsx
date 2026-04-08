@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import UploadDialog from '@/app/posts/UploadDialog'
 import GroupDialog from './GroupDialog'
 
@@ -35,8 +35,10 @@ export default function PostSidebar({ posts }: { posts: Post[] }) {
   const POST_ORDER_KEY = 'post-sidebar-post-order'
 
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const activeId = pathname?.split('/').pop() || ''
+  const activeGroup = (searchParams.get('group') || '').trim()
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [groupDialogOpen, setGroupDialogOpen] = useState(false)
@@ -347,7 +349,7 @@ export default function PostSidebar({ posts }: { posts: Post[] }) {
         } ${isDraggedOver ? 'ring-1 ring-blue-500/60 bg-blue-500/10' : ''}`}
       >
         <Link
-          href={`/posts/${post.id}`}
+          href={activeGroup ? `/posts/${post.id}?group=${encodeURIComponent(activeGroup)}` : `/posts/${post.id}`}
           className="flex-1 text-sm font-medium transition-colors group-hover:text-white"
         >
           <div className="break-words pr-4 leading-snug">{post.title}</div>
@@ -441,6 +443,7 @@ export default function PostSidebar({ posts }: { posts: Post[] }) {
         initialTag={editingPost?.tag || 'new'}
         initialAuthor={editingPost?.author}
         initialGroupName={editingPost?.group_name ?? null}
+        groupOptions={Array.from(new Set(posts.map(post => post.group_name || '').filter(Boolean) as string[]))}
         postId={editingPost?.id}
         onSaved={() => {
           setDialogOpen(false)

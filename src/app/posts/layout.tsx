@@ -1,9 +1,5 @@
 import AppShellLayout from '@/components/AppShellLayout'
 
-export default function ViewerLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function PostsLayout({ children }: { children: React.ReactNode }) {
   return <AppShellLayout>{children}</AppShellLayout>
 }
