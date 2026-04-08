@@ -1,5 +1,6 @@
 import { supabaseServer } from '@/lib/supabase-server'
 import PostsExplorer from './PostsExplorer'
+import { Suspense } from 'react'
 
 type Post = {
   id: string | number
@@ -29,7 +30,15 @@ export default async function PostsPage() {
         </div>
       )}
 
-      <PostsExplorer posts={posts} />
+      <Suspense
+        fallback={
+          <div className="rounded-lg border border-slate-100 bg-white p-6">
+            <div className="h-5 w-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+          </div>
+        }
+      >
+        <PostsExplorer posts={posts} />
+      </Suspense>
     </div>
   )
 }

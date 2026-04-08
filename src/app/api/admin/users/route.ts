@@ -120,7 +120,6 @@ export async function POST(request: Request) {
         email,
         action_link: actionLink,
         share_link: shareLink,
-        expires_at: data.properties.email_otp_expires_at,
       },
     })
   }

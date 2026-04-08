@@ -24,6 +24,10 @@ function getMissingColumnFromError(error: any) {
   return match?.[1] ?? null
 }
 
+function isPostSelectColumn(column: string): column is (typeof POSTS_SELECT_COLUMNS)[number] {
+  return (POSTS_SELECT_COLUMNS as readonly string[]).includes(column)
+}
+
 async function fetchPosts(selectColumns: string[]) {
   return await supabaseServer
     .from('posts')
@@ -65,7 +69,7 @@ export async function GET() {
       }
 
       const missingColumn = getMissingColumnFromError(error)
-      if (!missingColumn || !selectColumns.includes(missingColumn)) {
+      if (!missingColumn || !isPostSelectColumn(missingColumn) || !selectColumns.includes(missingColumn)) {
         throw error
       }
 

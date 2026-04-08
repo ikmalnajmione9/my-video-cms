@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useAdmin } from '@/contexts/AdminContext'
 import { useViewer } from '@/contexts/ViewerContext'
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { inferPostDateFromMarkdown } from '@/lib/r2-utils'
 
@@ -98,7 +98,7 @@ const getPostDateMarkerFromContent = (contentPath?: string | null): string | nul
 
 const POSTS_PER_PAGE = 10
 
-export default function DocsLandingPage() {
+function DocsLandingPageContent() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -1060,5 +1060,19 @@ export default function DocsLandingPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function DocsLandingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <div className="h-5 w-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <DocsLandingPageContent />
+    </Suspense>
   )
 }
