@@ -64,7 +64,8 @@ export default function InvitePage() {
         const accessToken = getParam(searchParams, hashParams, 'access_token')
         const refreshToken = getParam(searchParams, hashParams, 'refresh_token')
 
-        if (accessToken && refreshToken) {
+        // For password recovery flows, use OTP verification instead of direct session setup
+        if (accessToken && refreshToken && otpType !== 'recovery') {
           const { error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
