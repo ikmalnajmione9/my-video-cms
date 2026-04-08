@@ -7,6 +7,7 @@ import { ChangeEvent, FormEvent, Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { inferPostDateFromMarkdown } from '@/lib/r2-utils'
 import { getEmailLocalPart } from '@/lib/author-utils'
+import { supabase } from '@/lib/supabase-client'
 
 type Post = {
   id: string | number
@@ -116,7 +117,6 @@ function DocsLandingPageContent() {
   const {
     isAdmin,
     isLoading: adminLoading,
-    session,
     posts,
     groups,
     refreshPosts,
@@ -500,7 +500,12 @@ function DocsLandingPageContent() {
       const formData = new FormData()
       const postDateIso = editingLinkDateMarker || new Date().toISOString()
       const markdownWithDate = `<!-- POST_DATE:${postDateIso} -->\n[Open link](${normalizedUrl})`
+      const { data: { session } } = await supabase.auth.getSession()
       const author = getEmailLocalPart(session?.user?.email)
+
+      if (!author) {
+        throw new Error('Unable to determine your author name from the current session.')
+      }
 
       if (editingLinkPostId) {
         const res = await fetch(`/api/posts/${encodeURIComponent(String(editingLinkPostId))}`, {
@@ -513,6 +518,7 @@ function DocsLandingPageContent() {
             markdown: markdownWithDate,
             tag: linkTag,
             group_name: linkGroupName || null,
+            author,
           }),
         })
 
