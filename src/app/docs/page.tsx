@@ -8,6 +8,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { inferPostDateFromMarkdown } from '@/lib/r2-utils'
 import { getEmailLocalPart } from '@/lib/author-utils'
 import { supabase } from '@/lib/supabase-client'
+import { readResponseBody } from '@/lib/response-utils'
 
 type Post = {
   id: string | number
@@ -542,7 +543,7 @@ function DocsLandingPageContent() {
           }),
         })
 
-        const body = await res.json().catch(() => null)
+        const body = await readResponseBody<{ error?: string }>(res)
         if (!res.ok) {
           throw new Error(body?.error || 'Failed to save link post')
         }
@@ -565,7 +566,7 @@ function DocsLandingPageContent() {
         body: formData,
       })
 
-      const body = await res.json()
+      const body = await readResponseBody<{ error?: string }>(res)
       if (!res.ok) {
         throw new Error(body?.error || 'Failed to upload link post')
       }

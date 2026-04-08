@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase-client'
 import { getR2VideoUrl } from '@/lib/r2-utils'
 import { getEmailLocalPart } from '@/lib/author-utils'
+import { readResponseBody } from '@/lib/response-utils'
 
 type Post = { 
   id: string | number; 
@@ -35,6 +36,11 @@ interface UploadedVideo {
   file?: File
   localUrl?: string
   source?: 'uploaded' | 'existing'
+}
+
+interface UploadVideoResponse {
+  videoId?: string
+  error?: string
 }
 
 // Legacy function: now returns empty array since we don't parse old YouTube links
@@ -339,10 +345,10 @@ export default function UploadDialog({
           videoForm.append('video', pending.file as File)
 
           const res = await fetch('/api/upload-video', { method: 'POST', body: videoForm })
-          const body = await res.json()
-          if (!res.ok) throw new Error(body.error || 'Upload failed')
+          const body = await readResponseBody<UploadVideoResponse>(res)
+          if (!res.ok) throw new Error(body?.error || 'Upload failed')
 
-          const videoId = body.videoId // This is now the R2 key like "videos/timestamp-filename.mp4"
+          const videoId = body?.videoId // This is now the R2 key like "videos/timestamp-filename.mp4"
           updatedList = updatedList.map((p) => (p === pending ? { ...p, videoId } : p))
           setUploadedVideos(updatedList)
           setMessage('Video uploaded to R2 storage successfully.')
@@ -384,8 +390,8 @@ export default function UploadDialog({
               group_name: groupNameValue || null,
             }),
           })
-        const body = await res.json()
-        if (!res.ok) throw new Error(body.error || 'Update failed')
+        const body = await readResponseBody<{ error?: string }>(res)
+        if (!res.ok) throw new Error(body?.error || 'Update failed')
       } else {
         const formData = new FormData()
         formData.append('title', title.trim())
@@ -395,8 +401,8 @@ export default function UploadDialog({
         formData.append('group_name', groupNameValue)
 
         const res = await fetch('/api/upload', { method: 'POST', body: formData })
-        const body = await res.json()
-        if (!res.ok) throw new Error(body.error || 'Upload failed')
+        const body = await readResponseBody<{ error?: string }>(res)
+        if (!res.ok) throw new Error(body?.error || 'Upload failed')
       }
 
       setStatus('success')
