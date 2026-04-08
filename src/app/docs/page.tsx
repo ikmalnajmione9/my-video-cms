@@ -153,10 +153,25 @@ function DocsLandingPageContent() {
   const [linkUrl, setLinkUrl] = useState('')
   const [linkGroupName, setLinkGroupName] = useState('')
   const [linkTag, setLinkTag] = useState<(typeof STATUS_OPTIONS)[number]>('new')
+  const [linkAuthor, setLinkAuthor] = useState('')
+  const [initialLinkAuthor, setInitialLinkAuthor] = useState('')
+  const [sessionAuthor, setSessionAuthor] = useState('')
   const [uploadLinkStatus, setUploadLinkStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [uploadLinkMessage, setUploadLinkMessage] = useState('')
   const [editingLinkPostId, setEditingLinkPostId] = useState<string | number | null>(null)
   const [editingLinkDateMarker, setEditingLinkDateMarker] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setSessionAuthor(getEmailLocalPart(session.user.email))
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    setLinkAuthor(editingLinkPostId ? (initialLinkAuthor || sessionAuthor) : sessionAuthor)
+  }, [editingLinkPostId, initialLinkAuthor, sessionAuthor])
 
   // Restore selectedGroup and selectedStatus from localStorage
   useEffect(() => {
@@ -415,6 +430,8 @@ function DocsLandingPageContent() {
         setLinkUrl(extractedUrl)
         setLinkGroupName(data.group_name || '')
         setLinkTag(safeTag)
+        setInitialLinkAuthor(typeof data.author === 'string' ? data.author : '')
+        setLinkAuthor(typeof data.author === 'string' && data.author.trim() ? data.author.trim() : sessionAuthor)
         setUploadLinkStatus('idle')
         setUploadLinkMessage('')
         setUploadLinkDialogOpen(true)
@@ -451,6 +468,8 @@ function DocsLandingPageContent() {
     setUploadPostMenuOpen(false)
     setEditingLinkPostId(null)
     setEditingLinkDateMarker(null)
+    setInitialLinkAuthor('')
+    setLinkAuthor(sessionAuthor)
     setLinkTitle('')
     setLinkUrl('')
     setLinkGroupName('')
@@ -464,6 +483,8 @@ function DocsLandingPageContent() {
     setUploadLinkDialogOpen(false)
     setEditingLinkPostId(null)
     setEditingLinkDateMarker(null)
+    setInitialLinkAuthor('')
+    setLinkAuthor(sessionAuthor)
     setLinkTitle('')
     setLinkUrl('')
     setLinkGroupName('')
@@ -500,8 +521,7 @@ function DocsLandingPageContent() {
       const formData = new FormData()
       const postDateIso = editingLinkDateMarker || new Date().toISOString()
       const markdownWithDate = `<!-- POST_DATE:${postDateIso} -->\n[Open link](${normalizedUrl})`
-      const { data: { session } } = await supabase.auth.getSession()
-      const author = getEmailLocalPart(session?.user?.email)
+      const author = linkAuthor.trim()
 
       if (!author) {
         throw new Error('Unable to determine your author name from the current session.')
