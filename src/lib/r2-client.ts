@@ -1,5 +1,26 @@
 import { S3Client } from '@aws-sdk/client-s3'
 
+function getRequiredEnvVar(name: string): string {
+  const raw = process.env[name]
+  if (!raw) {
+    throw new Error(`Missing ${name} in environment variables.`)
+  }
+
+  // Normalize common copy/paste mistakes from env providers (quotes/newlines).
+  const normalized = raw.replace(/[\r\n]+/g, '').trim().replace(/^"|"$/g, '')
+
+  if (!normalized) {
+    throw new Error(`Invalid ${name}: empty after normalization.`)
+  }
+
+  // HTTP headers must not contain control characters.
+  if (/[^\x20-\x7E]/.test(normalized)) {
+    throw new Error(`Invalid ${name}: contains non-printable characters.`)
+  }
+
+  return normalized
+}
+
 /**
  * Create and return an R2 S3 client
  * Uses environment variables:
@@ -9,15 +30,9 @@ import { S3Client } from '@aws-sdk/client-s3'
  * - R2_BUCKET_NAME: Your R2 bucket name
  */
 export function getR2Client(): S3Client {
-  const accountId = process.env.R2_ACCOUNT_ID
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY
-
-  if (!accountId || !accessKeyId || !secretAccessKey) {
-    throw new Error(
-      'Missing R2 credentials. Please set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY in your environment variables.'
-    )
-  }
+  const accountId = getRequiredEnvVar('R2_ACCOUNT_ID')
+  const accessKeyId = getRequiredEnvVar('R2_ACCESS_KEY_ID')
+  const secretAccessKey = getRequiredEnvVar('R2_SECRET_ACCESS_KEY')
 
   return new S3Client({
     region: 'auto',
@@ -33,13 +48,7 @@ export function getR2Client(): S3Client {
  * Get the R2 bucket name from environment
  */
 export function getR2BucketName(): string {
-  const bucketName = process.env.R2_BUCKET_NAME
-
-  if (!bucketName) {
-    throw new Error('Missing R2_BUCKET_NAME in environment variables.')
-  }
-
-  return bucketName
+  return getRequiredEnvVar('R2_BUCKET_NAME')
 }
 
 /**
@@ -47,19 +56,18 @@ export function getR2BucketName(): string {
  * Uses R2_PUBLIC_URL environment variable if set, otherwise constructs from account ID
  */
 export function getR2PublicUrl(key: string): string {
-  const publicUrl = process.env.R2_PUBLIC_URL
+  const rawPublicUrl = process.env.R2_PUBLIC_URL
+  const publicUrl = rawPublicUrl
+    ? rawPublicUrl.replace(/[\r\n]+/g, '').trim().replace(/^"|"$/g, '')
+    : ''
 
   if (publicUrl) {
     // If public URL is provided (e.g., https://videos.example.com)
     return `${publicUrl}/${key}`
   }
 
-  const accountId = process.env.R2_ACCOUNT_ID
+  const accountId = getRequiredEnvVar('R2_ACCOUNT_ID')
   const bucketName = getR2BucketName()
-
-  if (!accountId) {
-    throw new Error('Missing R2_ACCOUNT_ID in environment variables.')
-  }
 
   // Default R2 public URL format
   return `https://${bucketName}.${accountId}.r2.cloudflarestorage.com/${key}`

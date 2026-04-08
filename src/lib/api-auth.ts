@@ -2,8 +2,18 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 type AuthResult =
-  | { ok: true; user: { id: string; email: string | null } }
+  | {
+      ok: true
+      user: {
+        id: string
+        email: string | null
+        app_metadata?: Record<string, unknown>
+        user_metadata?: Record<string, unknown>
+      }
+    }
   | { ok: false; response: NextResponse }
+
+type AuthenticatedUser = NonNullable<Extract<AuthResult, { ok: true }>['user']>
 
 function getAuthClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -53,6 +63,8 @@ export async function requireAuthenticatedUser(request: Request): Promise<AuthRe
       user: {
         id: data.user.id,
         email: data.user.email ?? null,
+        app_metadata: data.user.app_metadata,
+        user_metadata: data.user.user_metadata,
       },
     }
   } catch (error) {
@@ -78,6 +90,25 @@ export function isAdminEmail(email: string | null | undefined) {
   return getAdminEmailsFromEnv().includes(normalizedEmail)
 }
 
+function isTruthyAdminFlag(value: unknown) {
+  return value === true || value === 'true' || value === 'admin'
+}
+
+export function isAdminUser(user: AuthenticatedUser | null | undefined) {
+  if (!user) return false
+
+  if (isAdminEmail(user.email)) {
+    return true
+  }
+
+  const appMetadata = user.app_metadata ?? {}
+  if (isTruthyAdminFlag(appMetadata.role) || isTruthyAdminFlag(appMetadata.is_admin)) {
+    return true
+  }
+
+  return false
+}
+
 export async function requireAdminUser(request: Request): Promise<AuthResult> {
   const authResult = await requireAuthenticatedUser(request)
   if (!authResult.ok) {
@@ -85,6 +116,10 @@ export async function requireAdminUser(request: Request): Promise<AuthResult> {
   }
 
   const adminEmails = getAdminEmailsFromEnv()
+  if (isAdminUser(authResult.user)) {
+    return authResult
+  }
+
   if (adminEmails.length === 0) {
     return {
       ok: false,
@@ -95,12 +130,8 @@ export async function requireAdminUser(request: Request): Promise<AuthResult> {
     }
   }
 
-  if (!isAdminEmail(authResult.user.email)) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 }),
-    }
+  return {
+    ok: false,
+    response: NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 }),
   }
-
-  return authResult
 }

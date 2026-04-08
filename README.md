@@ -23,6 +23,7 @@ INVITE_REDIRECT_URL=http://localhost:3000/invite
 
 Notes:
 - `ADMIN_USER_EMAILS` controls which signed-in users can use `/admin/accounts` API actions.
+- If you prefer not to rely on an environment allowlist, you can also mark the Supabase auth user with `app_metadata.role = admin` or `app_metadata.is_admin = true`.
 - `ADMIN_ACTION_PASSKEY` is still required as a second factor for create/remove user actions.
 - `INVITE_REDIRECT_URL` is used when generating Supabase invite links.
 

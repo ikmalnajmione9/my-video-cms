@@ -38,3 +38,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message || 'Upload failed' }, { status: 500 })
   }
 }
+
+// Configure max payload size and timeout for video uploads
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '500mb',
+    },
+  },
+  maxDuration: 300, // 5 minutes for Vercel Pro
+}

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { isAdminEmail, requireAuthenticatedUser } from '@/lib/api-auth'
+import { isAdminUser, requireAuthenticatedUser } from '@/lib/api-auth'
 
 export async function GET(request: Request) {
   const auth = await requireAuthenticatedUser(request)
@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     user: {
       id: auth.user.id,
       email: auth.user.email,
-      is_admin: isAdminEmail(auth.user.email),
+      is_admin: isAdminUser(auth.user),
     },
   })
 }
