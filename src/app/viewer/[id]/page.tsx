@@ -137,9 +137,9 @@ export default function ViewerPostPage() {
             <div className="flex items-center gap-4 mb-8 text-xs">
               <div className="flex items-center gap-2 group">
                 <div className="h-6 w-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold shadow-lg group-hover:scale-110 transition-transform uppercase">
-                  {(post.author || 'Ikmal Najmi').split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
+                  {(post.author || 'Unknown').split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
                 </div>
-                <span className="text-slate-700">{post.author || 'Ikmal Najmi'}</span>
+                <span className="text-slate-700">{post.author || 'Unknown'}</span>
               </div>
               <div className="h-1 w-1 rounded-full bg-slate-300" />
               <div className="flex items-center gap-1.5 text-slate-600">

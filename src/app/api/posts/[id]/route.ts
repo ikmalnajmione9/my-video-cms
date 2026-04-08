@@ -76,7 +76,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     updateData.content_path = contentCandidate.trim()
   }
   if (typeof body.tag === 'string') updateData.tag = body.tag.trim() || 'new'
-  if (typeof body.author === 'string') updateData.author = body.author.trim() || 'Ikmal Najmi'
+  if (typeof body.author === 'string') updateData.author = body.author.trim()
   if (typeof body.group_name !== 'undefined') updateData.group_name = body.group_name === null ? null : (typeof body.group_name === 'string' ? body.group_name.trim() : body.group_name)
 
   let error: any = null

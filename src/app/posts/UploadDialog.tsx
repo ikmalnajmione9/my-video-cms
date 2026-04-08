@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase-client'
 import { getR2VideoUrl } from '@/lib/r2-utils'
+import { getEmailLocalPart } from '@/lib/author-utils'
 
 type Post = { 
   id: string | number; 
@@ -142,8 +143,7 @@ export default function UploadDialog({
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        const email = session.user.email || ''
-        const name = session.user.user_metadata?.full_name || email.split('@')[0]
+        const name = getEmailLocalPart(session.user.email)
         setSessionAuthor(name)
         // For new posts, always use the logged-in user's name
         if (!postId) setAuthor(name)

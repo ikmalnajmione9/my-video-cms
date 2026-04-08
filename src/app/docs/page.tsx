@@ -6,6 +6,7 @@ import { useViewer } from '@/contexts/ViewerContext'
 import { ChangeEvent, FormEvent, Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { inferPostDateFromMarkdown } from '@/lib/r2-utils'
+import { getEmailLocalPart } from '@/lib/author-utils'
 
 type Post = {
   id: string | number
@@ -115,6 +116,7 @@ function DocsLandingPageContent() {
   const {
     isAdmin,
     isLoading: adminLoading,
+    session,
     posts,
     groups,
     refreshPosts,
@@ -498,6 +500,7 @@ function DocsLandingPageContent() {
       const formData = new FormData()
       const postDateIso = editingLinkDateMarker || new Date().toISOString()
       const markdownWithDate = `<!-- POST_DATE:${postDateIso} -->\n[Open link](${normalizedUrl})`
+      const author = getEmailLocalPart(session?.user?.email)
 
       if (editingLinkPostId) {
         const res = await fetch(`/api/posts/${encodeURIComponent(String(editingLinkPostId))}`, {
@@ -527,6 +530,9 @@ function DocsLandingPageContent() {
       formData.append('markdown', markdownWithDate)
       formData.append('tag', linkTag)
       formData.append('group_name', linkGroupName)
+      if (author) {
+        formData.append('author', author)
+      }
 
       const res = await fetch('/api/upload', {
         method: 'POST',

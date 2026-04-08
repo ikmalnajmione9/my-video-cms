@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     const markdown = formData.get('markdown') ?? formData.get('description')
     const title = (formData.get('title') as string) || ''
     const tag = ((formData.get('tag') as string) || 'new').trim() || 'new'
-    const author = ((formData.get('author') as string) || 'Ikmal Najmi').trim() || 'Ikmal Najmi'
+    const author = ((formData.get('author') as string) || '').trim()
     const group_name = (formData.get('group_name') as string) || ''
 
     let markdownText = ''
