@@ -39,12 +39,5 @@ export async function POST(req: Request) {
   }
 }
 
-// Configure max payload size and timeout for video uploads
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '500mb',
-    },
-  },
-  maxDuration: 300, // 5 minutes for Vercel Pro
-}
+// Configure timeout for video uploads (5 minutes for Vercel Pro)
+export const maxDuration = 300
