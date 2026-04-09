@@ -23,8 +23,16 @@ export const supabaseServer: SupabaseClient = (() => {
   // During Next.js build phase, env vars may not be available
   // Return a minimal stub to avoid errors during collection
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const queryStub = {
+      select: () => Promise.resolve({ data: null }),
+      update: () => ({ eq: () => Promise.resolve({ data: null }) }),
+      eq: () => ({ select: () => Promise.resolve({ data: null }) }),
+      order: () => Promise.resolve({ data: null }),
+      delete: () => Promise.resolve({ data: null }),
+      insert: () => Promise.resolve({ data: null }),
+    }
     return {
-      from: () => ({ update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null }) }) }) }),
+      from: () => queryStub,
       auth: { admin: { updateUserById: () => Promise.resolve({ data: null }) } },
     } as any
   }
