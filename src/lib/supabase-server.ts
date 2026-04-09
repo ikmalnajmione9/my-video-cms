@@ -23,18 +23,34 @@ export const supabaseServer: SupabaseClient = (() => {
   // During Next.js build phase, env vars may not be available
   // Return a minimal stub to avoid errors during collection
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    const chainableStub = {
-      select: () => chainableStub,
-      update: () => chainableStub,
-      eq: () => chainableStub,
-      order: () => chainableStub,
-      delete: () => chainableStub,
-      insert: () => chainableStub,
-      then: (onFulfilled?: any, onRejected?: any) => Promise.resolve({ data: null }).then(onFulfilled, onRejected),
+    const createThenableChain = () => {
+      let proxy: any
+      const target = () => proxy
+
+      proxy = new Proxy(target, {
+        get(_obj, prop) {
+          if (prop === 'then') {
+            return (onFulfilled?: any, onRejected?: any) =>
+              Promise.resolve({ data: null, error: null }).then(onFulfilled, onRejected)
+          }
+          return proxy
+        },
+        apply() {
+          return proxy
+        },
+      })
+
+      return proxy
     }
+
     return {
-      from: () => chainableStub,
-      auth: { admin: { updateUserById: () => Promise.resolve({ data: null }) } },
+      from: () => createThenableChain(),
+      rpc: () => Promise.resolve({ data: null, error: null }),
+      storage: { from: () => createThenableChain() },
+      auth: {
+        admin: { updateUserById: () => Promise.resolve({ data: null, error: null }) },
+        resetPasswordForEmail: () => Promise.resolve({ data: null, error: null }),
+      },
     } as any
   }
   return getSupabaseServer()
