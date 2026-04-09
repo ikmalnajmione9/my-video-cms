@@ -33,7 +33,11 @@ export default function AccountsPage() {
   const [notice, setNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
   const [passkeyModalOpen, setPasskeyModalOpen] = useState(false)
   const [passkey, setPasskey] = useState('')
-  const [pendingAction, setPendingAction] = useState<{ type: 'create' } | { type: 'remove'; user: User } | null>(null)
+  const [pendingAction, setPendingAction] = useState<{ type: 'create' } | { type: 'remove'; user: User } | { type: 'reset-password'; user: User } | null>(null)
+  const [resettingPasswordUserId, setResettingPasswordUserId] = useState('')
+  const [generatedPassword, setGeneratedPassword] = useState('')
+  const [copyingPassword, setCopyingPassword] = useState(false)
+  const [passwordCopied, setPasswordCopied] = useState(false)
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -121,6 +125,14 @@ export default function AccountsPage() {
     setNotice({ type: 'info', text: `Enter admin passkey to remove ${user.email}.` })
   }
 
+  const handleResetPasswordClick = (user: User) => {
+    setPendingAction({ type: 'reset-password', user })
+    setPasskey('')
+    setGeneratedPassword('')
+    setPasskeyModalOpen(true)
+    setNotice({ type: 'info', text: `Enter admin passkey to reset password for ${user.email}.` })
+  }
+
   const handlePasskeyAction = async () => {
     if (!pendingAction) return
     if (!passkey.trim()) {
@@ -154,33 +166,64 @@ export default function AccountsPage() {
       return
     }
 
-    const targetUser = pendingAction.user
-    setRemovingUserId(targetUser.id)
-    try {
-      const headers = await getAuthHeaders()
-      const res = await fetch('/api/admin/users', {
-        method: 'DELETE',
-        headers,
-        body: JSON.stringify({ userId: targetUser.id, passkey: passkey.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to remove user')
-      setNotice({ type: 'success', text: `Account removed for ${targetUser.email}.` })
-      setPasskeyModalOpen(false)
-      setPendingAction(null)
-      fetchUsers()
-    } catch (e: any) {
-      setNotice({ type: 'error', text: e.message || 'Failed to remove user.' })
-    } finally {
-      setRemovingUserId('')
+    if (pendingAction.type === 'remove') {
+      const targetUser = pendingAction.user
+      setRemovingUserId(targetUser.id)
+      try {
+        const headers = await getAuthHeaders()
+        const res = await fetch('/api/admin/users', {
+          method: 'DELETE',
+          headers,
+          body: JSON.stringify({ userId: targetUser.id, passkey: passkey.trim() }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed to remove user')
+        setNotice({ type: 'success', text: `Account removed for ${targetUser.email}.` })
+        setPasskeyModalOpen(false)
+        setPendingAction(null)
+        fetchUsers()
+      } catch (e: any) {
+        setNotice({ type: 'error', text: e.message || 'Failed to remove user.' })
+      } finally {
+        setRemovingUserId('')
+      }
+      return
+    }
+
+    if (pendingAction.type === 'reset-password') {
+      const targetUser = pendingAction.user
+      setResettingPasswordUserId(targetUser.id)
+      try {
+        const headers = await getAuthHeaders()
+        const res = await fetch('/api/admin/users/reset-password', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userId: targetUser.id, passkey: passkey.trim() }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed to reset password')
+        setGeneratedPassword(data.password)
+        setNotice({ type: 'success', text: `Password reset for ${targetUser.email}. Share the new password with the user.` })
+        setPasskey('')
+      } catch (e: any) {
+        setNotice({ type: 'error', text: e.message || 'Failed to reset password.' })
+        setPasskeyModalOpen(false)
+        setPendingAction(null)
+      } finally {
+        setResettingPasswordUserId('')
+      }
+      return
     }
   }
 
   const closePasskeyModal = () => {
-    if (inviting || !!removingUserId) return
+    if (inviting || !!removingUserId || !!resettingPasswordUserId) return
     setPasskeyModalOpen(false)
     setPendingAction(null)
     setPasskey('')
+    setGeneratedPassword('')
+    setCopyingPassword(false)
+    setPasswordCopied(false)
   }
 
   const handleCopyInviteLink = async () => {
@@ -196,6 +239,21 @@ export default function AccountsPage() {
       setNotice({ type: 'error', text: 'Failed to copy invite link. Please copy manually.' })
     } finally {
       setCopyingInviteLink(false)
+    }
+  }
+
+  const handleCopyPassword = async () => {
+    if (!generatedPassword || copyingPassword) return
+    setCopyingPassword(true)
+    try {
+      await navigator.clipboard.writeText(generatedPassword)
+      setPasswordCopied(true)
+      setNotice({ type: 'success', text: 'Password copied to clipboard.' })
+      setTimeout(() => setPasswordCopied(false), 1800)
+    } catch (err) {
+      setNotice({ type: 'error', text: 'Failed to copy password. Please try again or copy manually.' })
+    } finally {
+      setCopyingPassword(false)
     }
   }
 
@@ -308,21 +366,38 @@ export default function AccountsPage() {
                         {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Never'}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveClick(user)}
-                          disabled={removingUserId === user.id || user.id === currentUserId || !isDisplayableEmail(user.email)}
-                          className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
-                          title={
-                            user.id === currentUserId
-                              ? 'You cannot remove your own account.'
-                              : !isDisplayableEmail(user.email)
-                              ? 'This account is already removed.'
-                              : `Remove ${user.email}`
-                          }
-                        >
-                          {removingUserId === user.id ? 'Removing...' : 'Remove Account'}
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleResetPasswordClick(user)}
+                            disabled={resettingPasswordUserId === user.id || user.id === currentUserId || !isDisplayableEmail(user.email)}
+                            className="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                            title={
+                              user.id === currentUserId
+                                ? 'You cannot reset your own password.'
+                                : !isDisplayableEmail(user.email)
+                                ? 'This account is already removed.'
+                                : `Reset password for ${user.email}`
+                            }
+                          >
+                            {resettingPasswordUserId === user.id ? 'Resetting...' : 'Reset Password'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveClick(user)}
+                            disabled={removingUserId === user.id || user.id === currentUserId || !isDisplayableEmail(user.email)}
+                            className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                            title={
+                              user.id === currentUserId
+                                ? 'You cannot remove your own account.'
+                                : !isDisplayableEmail(user.email)
+                                ? 'This account is already removed.'
+                                : `Remove ${user.email}`
+                            }
+                          >
+                            {removingUserId === user.id ? 'Removing...' : 'Remove Account'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -337,41 +412,86 @@ export default function AccountsPage() {
     {passkeyModalOpen && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 px-4">
         <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
-          <h3 className="text-base font-bold text-slate-900">Admin Passkey Required</h3>
+          <h3 className="text-base font-bold text-slate-900">
+            {generatedPassword ? 'New Password Generated' : 'Admin Passkey Required'}
+          </h3>
           <p className="mt-1 text-xs text-slate-600">
-            {pendingAction?.type === 'remove'
+            {generatedPassword
+              ? `Share this password with ${pendingAction?.type === 'reset-password' ? pendingAction.user?.email : 'the user'}.`
+              : pendingAction?.type === 'remove'
               ? `Confirm passkey to remove ${pendingAction.user.email}.`
+              : pendingAction?.type === 'reset-password'
+              ? `Confirm passkey to reset password for ${pendingAction.user.email}.`
               : 'Confirm passkey to create this account.'}
           </p>
-          <div className="mt-4">
-            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Passkey</label>
-            <input
-              type="password"
-              value={passkey}
-              onChange={(e) => setPasskey(e.target.value)}
-              autoFocus
-              className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500/60 transition-colors"
-              placeholder="Enter admin passkey"
-            />
-          </div>
-          <div className="mt-5 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={closePasskeyModal}
-              disabled={inviting || !!removingUserId}
-              className="rounded border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handlePasskeyAction}
-              disabled={inviting || !!removingUserId}
-              className="rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
-            >
-              Confirm
-            </button>
-          </div>
+          {generatedPassword ? (
+            <>
+              <div className="mt-4 rounded border border-green-200 bg-green-50 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-green-600 mb-2">New Password</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 rounded bg-white px-3 py-2 text-sm font-mono text-green-900 break-all">
+                    {generatedPassword}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={handleCopyPassword}
+                    disabled={copyingPassword}
+                    className="rounded border border-green-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors"
+                  >
+                    {passwordCopied ? 'Copied!' : copyingPassword ? 'Copying...' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasskeyModalOpen(false)
+                    setPendingAction(null)
+                    setGeneratedPassword('')
+                    setPasskey('')
+                    setCopyingPassword(false)
+                    setPasswordCopied(false)
+                  }}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mt-4">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Passkey</label>
+                <input
+                  type="password"
+                  value={passkey}
+                  onChange={(e) => setPasskey(e.target.value)}
+                  autoFocus
+                  className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500/60 transition-colors"
+                  placeholder="Enter admin passkey"
+                />
+              </div>
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closePasskeyModal}
+                  disabled={inviting || !!removingUserId || !!resettingPasswordUserId}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePasskeyAction}
+                  disabled={inviting || !!removingUserId || !!resettingPasswordUserId}
+                  className="rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+                >
+                  Confirm
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     )}

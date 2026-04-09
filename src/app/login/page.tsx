@@ -48,16 +48,25 @@ export default function LoginPage() {
     setResetLoading(true)
     try {
       const redirectTo = `${window.location.origin}/invite`
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
-        redirectTo,
+      const response = await fetch('/api/auth/request-password-reset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: resetEmail.trim(),
+          redirectTo,
+        }),
       })
 
-      if (error) {
-        setResetError(error.message)
+      const data = await response.json()
+
+      if (!response.ok) {
+        setResetError(data.error || 'Failed to send password reset email')
         return
       }
 
-      setResetNotice('Password reset email sent. Please check your inbox.')
+      setResetNotice(data.message || 'Password reset email sent. Please check your inbox.')
     } catch {
       setResetError('Unable to send reset email. Please try again.')
     } finally {
